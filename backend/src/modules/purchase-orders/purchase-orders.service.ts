@@ -469,8 +469,13 @@ export class PurchaseOrdersService {
                     },
                 });
 
-                // Accumulate total for payable
-                totalReceiptAmount = totalReceiptAmount.add(quantity.mul(unitCost));
+                // Accumulate total for payable (Subtotal + Tax)
+                const itemSubtotal = quantity.mul(unitCost);
+                // Use taxRate from the original order item
+                const taxRate = orderItem.taxRate || new Decimal(0);
+                const itemTax = itemSubtotal.mul(taxRate);
+
+                totalReceiptAmount = totalReceiptAmount.add(itemSubtotal.add(itemTax));
             }
 
             // 4. Determine new order status

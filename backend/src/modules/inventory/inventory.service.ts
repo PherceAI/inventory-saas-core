@@ -241,7 +241,7 @@ export class InventoryService {
           quantityCurrent: { gt: 0 },
           isExhausted: false,
         },
-        orderBy: { receivedAt: 'asc' }, // FIFO: oldest first
+        orderBy: [{ receivedAt: 'asc' }, { createdAt: 'asc' }], // FIFO: oldest first, deterministic tie-breaker
       });
 
       if (availableBatches.length === 0) {
