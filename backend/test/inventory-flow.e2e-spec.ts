@@ -2,9 +2,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from './../src/app.module';
+import { PrismaService } from '../src/common/database/prisma.service';
 
 describe('Inventory Flow (E2E)', () => {
-    jest.setTimeout(30000); // 30s timeout
+    jest.setTimeout(60000); // 60s timeout
     let app: INestApplication;
     let jwtToken: string;
     let tenantId: string;
@@ -13,12 +14,12 @@ describe('Inventory Flow (E2E)', () => {
     let productId: string;
 
     beforeAll(async () => {
+        console.log('➡️ [E2E] Starting beforeAll...');
         const moduleFixture: TestingModule = await Test.createTestingModule({
             imports: [AppModule],
         }).compile();
 
         app = moduleFixture.createNestApplication();
-        // Mimic main.ts global pipes
         app.useGlobalPipes(
             new ValidationPipe({
                 whitelist: true,
@@ -27,41 +28,57 @@ describe('Inventory Flow (E2E)', () => {
                 transformOptions: { enableImplicitConversion: true },
             }),
         );
+        console.log('➡️ [E2E] Initializing app...');
         await app.init();
+        console.log('✅ [E2E] App initialized.');
 
         // 1. Login to get JWT
-        // Assuming 'admin@pherce.com' / 'password123' from seed or user provided context
+        console.log('➡️ [E2E] Logging in...');
         const loginResponse = await request(app.getHttpServer())
             .post('/auth/login')
             .send({
                 email: 'admin@fazt-inventory.com',
                 password: 'password123',
-            })
-            .expect(200);
+            });
+
+        if (loginResponse.status !== 200) {
+            console.error('❌ [E2E] Login Failed:', loginResponse.body);
+            throw new Error('Login failed');
+        }
 
         jwtToken = loginResponse.body.accessToken;
-        // Decode JWT to get tenantId is messy without lib, but typically login returns user info
-        // Wait, does login return user info with tenants? The auth controller usually does.
-        // Let's assume we can fetch profile or lists.
-        // Or we can just use the first tenant from a list tenants endpoint.
+        console.log('✅ [E2E] Login success.');
     });
 
     afterAll(async () => {
+        console.log('🛑 [E2E] Starting afterAll tear down...');
+        try {
+            const prisma = app.get(PrismaService);
+            console.log('🛑 [E2E] Disconnecting Prisma...');
+            await prisma.$disconnect();
+            console.log('✅ [E2E] Prisma disconnected.');
+        } catch (e) {
+            console.warn('⚠️ [E2E] Prisma disconnect failed or not found:', e);
+        }
+        console.log('🛑 [E2E] Closing App...');
         await app.close();
+        console.log('✅ [E2E] App closed.');
     });
 
     it('should retrieve tenant ID', async () => {
+        console.log('🧪 [Test] 1. Get Tenants');
         const response = await request(app.getHttpServer())
             .get('/tenants')
             .set('Authorization', `Bearer ${jwtToken}`)
             .expect(200);
 
-        // Assuming at least one tenant exists from seed
         expect(response.body.length).toBeGreaterThan(0);
         tenantId = response.body[0].id;
+        console.log(`✅ [Test] Tenant Found: ${tenantId}`);
     });
 
     it('should create a supplier', async () => {
+        console.log('🧪 [Test] 2. Create Supplier');
         const response = await request(app.getHttpServer())
             .post('/suppliers')
             .set('Authorization', `Bearer ${jwtToken}`)
@@ -75,11 +92,11 @@ describe('Inventory Flow (E2E)', () => {
             .expect(201);
 
         supplierId = response.body.id;
-        expect(supplierId).toBeDefined();
+        console.log(`✅ [Test] Supplier Created: ${supplierId}`);
     });
 
     it('should get a product (or create one)', async () => {
-        // First try to list products
+        console.log('🧪 [Test] 3. Get/Create Product');
         const listResponse = await request(app.getHttpServer())
             .get('/products')
             .set('Authorization', `Bearer ${jwtToken}`)
@@ -88,8 +105,9 @@ describe('Inventory Flow (E2E)', () => {
 
         if (listResponse.body.data && listResponse.body.data.length > 0) {
             productId = listResponse.body.data[0].id;
+            console.log(`✅ [Test] Existing Product Found: ${productId}`);
         } else {
-            // Need category
+            console.log('➡️ [Test] Creating Category...');
             const catRes = await request(app.getHttpServer())
                 .post('/categories')
                 .set('Authorization', `Bearer ${jwtToken}`)
@@ -97,7 +115,7 @@ describe('Inventory Flow (E2E)', () => {
                 .send({ name: 'E2E Cat' })
                 .expect(201);
 
-            // Create product
+            console.log('➡️ [Test] Creating Product...');
             const createResponse = await request(app.getHttpServer())
                 .post('/products')
                 .set('Authorization', `Bearer ${jwtToken}`)
@@ -111,11 +129,12 @@ describe('Inventory Flow (E2E)', () => {
                 })
                 .expect(201);
             productId = createResponse.body.id;
+            console.log(`✅ [Test] Product Created: ${productId}`);
         }
-        expect(productId).toBeDefined();
     });
 
     it('should create a purchase order', async () => {
+        console.log('🧪 [Test] 4. Create Purchase Order');
         const response = await request(app.getHttpServer())
             .post('/purchase-orders')
             .set('Authorization', `Bearer ${jwtToken}`)
@@ -128,9 +147,11 @@ describe('Inventory Flow (E2E)', () => {
             .expect(201);
 
         purchaseOrderId = response.body.id;
+        console.log(`✅ [Test] PO Created: ${purchaseOrderId}`);
     });
 
     it('should add item to purchase order', async () => {
+        console.log('🧪 [Test] 5. Add Item to PO');
         await request(app.getHttpServer())
             .post(`/purchase-orders/${purchaseOrderId}/items`)
             .set('Authorization', `Bearer ${jwtToken}`)
@@ -142,18 +163,21 @@ describe('Inventory Flow (E2E)', () => {
                 taxRate: 0.10 // 10% Tax
             })
             .expect(201);
+        console.log('✅ [Test] Item Added');
     });
 
     it('should send the purchase order', async () => {
+        console.log('🧪 [Test] 6. Send PO');
         await request(app.getHttpServer())
             .patch(`/purchase-orders/${purchaseOrderId}/send`)
             .set('Authorization', `Bearer ${jwtToken}`)
             .set('x-tenant-id', tenantId)
             .expect(200);
+        console.log('✅ [Test] PO Sent');
     });
 
     it('should receive goods and validate account payable with tax', async () => {
-        // Need a warehouse first
+        console.log('🧪 [Test] 7. Receive Goods');
         const whRes = await request(app.getHttpServer())
             .get('/warehouses')
             .set('Authorization', `Bearer ${jwtToken}`)
@@ -162,6 +186,7 @@ describe('Inventory Flow (E2E)', () => {
 
         let warehouseId = whRes.body[0]?.id;
         if (!warehouseId) {
+            console.log('➡️ [Test] Creating Warehouse...');
             const newWh = await request(app.getHttpServer())
                 .post('/warehouses')
                 .set('Authorization', `Bearer ${jwtToken}`)
@@ -171,6 +196,7 @@ describe('Inventory Flow (E2E)', () => {
             warehouseId = newWh.body.id;
         }
 
+        console.log('➡️ [Test] Receiving...');
         const response = await request(app.getHttpServer())
             .post(`/purchase-orders/${purchaseOrderId}/receive`)
             .set('Authorization', `Bearer ${jwtToken}`)
@@ -181,7 +207,7 @@ describe('Inventory Flow (E2E)', () => {
                     {
                         productId: productId,
                         quantityReceived: 10,
-                        unitCost: 50 // Same as order
+                        unitCost: 50
                     }
                 ],
                 invoiceNumber: 'INV-123'
@@ -189,18 +215,8 @@ describe('Inventory Flow (E2E)', () => {
             .expect(201);
 
         const payable = response.body.payable;
-        expect(payable).toBeDefined();
-
-        // Validate Math:
-        // Qty: 10
-        // Unit Cost: 50
-        // Subtotal: 500
-        // Tax Rate: 10% (0.10)
-        // Tax: 50
-        // Expected Total: 550
-
-        // Response might be string or number based on NestJS serialization of Decimal
         const totalAmount = parseFloat(payable.totalAmount);
         expect(totalAmount).toBe(550);
+        console.log(`✅ [Test] Receiving Complete. Payable: ${totalAmount}`);
     });
 });

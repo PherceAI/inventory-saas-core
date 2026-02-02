@@ -282,6 +282,12 @@ Standard templates, typical layouts, common color schemes, overused patterns = *
     - Use `will-change` strategically for heavy animations.
     - `prefers-reduced-motion` support is MANDATORY.
 
+**🌑 SHADOW & DEPTH PROTOCOL (STRICT):**
+- **❌ NO HEAVY SHADOWS:** Never use `shadow-xl`, `shadow-2xl` or high-opacity custom shadows (e.g., `rgba(0,0,0,0.1)`).
+- **❌ NO HOVER EXPANSION:** Do not increase shadow size on hover (`hover:shadow-lg`). It looks cheap and heavy.
+- **✅ SOFT & CLEAN ONLY:** Use `shadow-sm` or `shadow-clean` (ultra-low opacity: 0.02-0.04).
+- **✅ ONE LAYER:** Shadows should be barely perceptible, just enough to separate the surface.
+
 **✅ EVERY design must achieve this trinity:**
 1. Sharp/Net Geometry (Extremism)
 2. Bold Color Palette (No Purple)
