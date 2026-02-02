@@ -15,6 +15,7 @@ import {
     ArrowDownToLine,
     Filter
 } from "lucide-react"
+import { ProductInboundModal } from "@/components/modules/inventory/product-inbound-modal"
 
 export const metadata: Metadata = {
     title: "Inventario | Antigravity SaaS",
@@ -54,13 +55,15 @@ export default async function InventoryPage() {
 
             {/* 2. Action Buttons Bar */}
             <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
-                <ActionButton
-                    icon={ArrowDownToLine}
-                    label="Ingreso de Productos"
-                    desc="Registrar entradas"
-                    color="text-emerald-600"
-                    bg="bg-emerald-50"
-                />
+                <ProductInboundModal>
+                    <ActionButton
+                        icon={ArrowDownToLine}
+                        label="Ingreso de Productos"
+                        desc="Registrar entradas"
+                        color="text-emerald-600"
+                        bg="bg-emerald-50"
+                    />
+                </ProductInboundModal>
                 <ActionButton
                     icon={ArrowRightLeft}
                     label="Traslado"

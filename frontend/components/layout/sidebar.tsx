@@ -10,12 +10,14 @@ import {
     Settings,
     BarChart3,
     Truck,
+    Store,
     Hexagon
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const navigation = [
     { name: "Dashboard", href: "/", icon: LayoutDashboard },
+    { name: "Punto de Venta", href: "/pos", icon: Store },
     { name: "Inventario", href: "/inventory", icon: Package },
     { name: "Proveedores", href: "/suppliers", icon: Users },
     { name: "Pedidos", href: "/orders", icon: ShoppingCart },
