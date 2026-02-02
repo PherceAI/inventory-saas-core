@@ -1,0 +1,502 @@
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+  Logger,
+} from '@nestjs/common';
+import { PrismaService } from '../../common/database/index.js';
+import {
+  CreateInboundMovementDto,
+  CreateOutboundMovementDto,
+  OutboundReason,
+} from './dto/index.js';
+import { MovementType } from '@prisma/client';
+import { Decimal } from '@prisma/client/runtime/library';
+
+/**
+ * Result of an inbound operation
+ */
+export interface InboundResult {
+  batch: {
+    id: string;
+    batchNumber: string;
+    quantityInitial: Decimal;
+    unitCost: Decimal;
+    expiresAt: Date | null;
+  };
+  movement: {
+    id: string;
+    type: MovementType;
+    quantity: Decimal;
+    stockAfter: Decimal;
+  };
+}
+
+/**
+ * Result of an outbound operation (may include multiple movements for FIFO)
+ */
+export interface OutboundResult {
+  totalQuantity: Decimal;
+  movements: Array<{
+    id: string;
+    batchId: string;
+    batchNumber: string;
+    quantity: Decimal;
+    stockBefore: Decimal;
+    stockAfter: Decimal;
+  }>;
+  affectedBatches: number;
+}
+
+@Injectable()
+export class InventoryService {
+  private readonly logger = new Logger(InventoryService.name);
+
+  constructor(private readonly prisma: PrismaService) { }
+
+  /**
+   * Generate a unique batch number if not provided
+   */
+  private generateBatchNumber(): string {
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(2, 6).toUpperCase();
+    return `B-${timestamp}-${random}`;
+  }
+
+  /**
+   * Register inbound inventory movement (stock entry)
+   * Creates a new Batch and InventoryMovement in a single transaction
+   */
+  async registerInbound(
+    tenantId: string,
+    userId: string,
+    dto: CreateInboundMovementDto,
+  ): Promise<InboundResult> {
+    this.logger.log(
+      `Registering inbound: ${dto.quantity} units of product ${dto.productId}`,
+    );
+
+    // Validate product exists and belongs to tenant
+    const product = await this.prisma.product.findFirst({
+      where: { id: dto.productId, tenantId },
+    });
+
+    if (!product) {
+      throw new NotFoundException(
+        'Producto no encontrado o no pertenece a este tenant',
+      );
+    }
+
+    // Validate warehouse exists and belongs to tenant
+    const warehouse = await this.prisma.warehouse.findFirst({
+      where: { id: dto.warehouseId, tenantId },
+    });
+
+    if (!warehouse) {
+      throw new NotFoundException(
+        'Bodega no encontrada o no pertenece a este tenant',
+      );
+    }
+
+    // Validate supplier if provided
+    if (dto.supplierId) {
+      const supplier = await this.prisma.supplier.findFirst({
+        where: { id: dto.supplierId, tenantId },
+      });
+
+      if (!supplier) {
+        throw new NotFoundException(
+          'Proveedor no encontrado o no pertenece a este tenant',
+        );
+      }
+    }
+
+    // Generate batch number if not provided
+    const batchNumber = dto.batchNumber || this.generateBatchNumber();
+
+    // Check batch number uniqueness within tenant
+    const existingBatch = await this.prisma.batch.findFirst({
+      where: { tenantId, batchNumber },
+    });
+
+    if (existingBatch) {
+      throw new BadRequestException(
+        `Ya existe un lote con el número ${batchNumber}`,
+      );
+    }
+
+    // Convert to Decimal for precision
+    const quantity = new Decimal(dto.quantity);
+    const unitCost = new Decimal(dto.unitCost);
+    const totalCost = quantity.mul(unitCost);
+
+    // Execute transaction: Create Batch + Movement
+    const result = await this.prisma.$transaction(async (tx) => {
+      // Step 1: Create the Batch
+      const batch = await tx.batch.create({
+        data: {
+          tenantId,
+          productId: dto.productId,
+          warehouseId: dto.warehouseId,
+          supplierId: dto.supplierId,
+          batchNumber,
+          quantityInitial: quantity,
+          quantityCurrent: quantity,
+          unitCost,
+          receivedAt: new Date(),
+          expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
+        },
+      });
+
+      // Step 2: Create the Movement record
+      const movement = await tx.inventoryMovement.create({
+        data: {
+          tenantId,
+          productId: dto.productId,
+          batchId: batch.id,
+          type: MovementType.IN,
+          quantity,
+          stockBefore: new Decimal(0),
+          stockAfter: quantity,
+          warehouseDestinationId: dto.warehouseId,
+          unitCost,
+          totalCost,
+          performedById: userId,
+          notes: dto.notes,
+        },
+      });
+
+      return { batch, movement };
+    });
+
+    this.logger.log(
+      `Inbound registered: Batch ${result.batch.batchNumber} with ${quantity} units`,
+    );
+
+    return {
+      batch: {
+        id: result.batch.id,
+        batchNumber: result.batch.batchNumber,
+        quantityInitial: result.batch.quantityInitial,
+        unitCost: result.batch.unitCost,
+        expiresAt: result.batch.expiresAt,
+      },
+      movement: {
+        id: result.movement.id,
+        type: result.movement.type,
+        quantity: result.movement.quantity,
+        stockAfter: result.movement.stockAfter,
+      },
+    };
+  }
+
+  /**
+   * Register outbound inventory movement (stock exit) using FIFO
+   * Consumes from oldest batches first (by receivedAt)
+   */
+  async registerOutbound(
+    tenantId: string,
+    userId: string,
+    dto: CreateOutboundMovementDto,
+  ): Promise<OutboundResult> {
+    this.logger.log(
+      `Registering outbound: ${dto.quantity} units of product ${dto.productId} (FIFO)`,
+    );
+
+    // Validate product exists and belongs to tenant
+    const product = await this.prisma.product.findFirst({
+      where: { id: dto.productId, tenantId },
+    });
+
+    if (!product) {
+      throw new NotFoundException(
+        'Producto no encontrado o no pertenece a este tenant',
+      );
+    }
+
+    // Validate warehouse exists and belongs to tenant
+    const warehouse = await this.prisma.warehouse.findFirst({
+      where: { id: dto.warehouseId, tenantId },
+    });
+
+    if (!warehouse) {
+      throw new NotFoundException(
+        'Bodega no encontrada o no pertenece a este tenant',
+      );
+    }
+
+    const requestedQuantity = new Decimal(dto.quantity);
+
+    // Map OutboundReason to MovementType
+    const movementType = this.mapReasonToMovementType(dto.reason);
+
+    // Execute FIFO logic in transaction
+    const result = await this.prisma.$transaction(async (tx) => {
+      // Step 1: Get available batches, ordered by receivedAt ASC (FIFO)
+      const availableBatches = await tx.batch.findMany({
+        where: {
+          tenantId,
+          productId: dto.productId,
+          warehouseId: dto.warehouseId,
+          quantityCurrent: { gt: 0 },
+          isExhausted: false,
+        },
+        orderBy: [{ receivedAt: 'asc' }, { createdAt: 'asc' }], // FIFO: oldest first, deterministic tie-breaker
+      });
+
+      if (availableBatches.length === 0) {
+        throw new BadRequestException(
+          'No hay stock disponible para este producto en esta bodega',
+        );
+      }
+
+      // Calculate total available stock
+      const totalAvailable = availableBatches.reduce(
+        (sum, batch) => sum.add(batch.quantityCurrent),
+        new Decimal(0),
+      );
+
+      if (totalAvailable.lt(requestedQuantity)) {
+        throw new BadRequestException(
+          `Stock insuficiente. Disponible: ${totalAvailable.toString()}, Solicitado: ${requestedQuantity.toString()}`,
+        );
+      }
+
+      // Step 2: Iterate batches to satisfy requested quantity (FIFO)
+      let remaining = requestedQuantity;
+      const movements: Array<{
+        id: string;
+        batchId: string;
+        batchNumber: string;
+        quantity: Decimal;
+        stockBefore: Decimal;
+        stockAfter: Decimal;
+      }> = [];
+
+      for (const batch of availableBatches) {
+        if (remaining.lte(0)) break;
+
+        const batchCurrent = batch.quantityCurrent;
+        const toConsume = Decimal.min(remaining, batchCurrent);
+        const newQuantity = batchCurrent.sub(toConsume);
+        const isExhausted = newQuantity.lte(0);
+
+        // Update batch
+        await tx.batch.update({
+          where: { id: batch.id },
+          data: {
+            quantityCurrent: newQuantity,
+            isExhausted,
+          },
+        });
+
+        // Create movement for this batch consumption
+        const movement = await tx.inventoryMovement.create({
+          data: {
+            tenantId,
+            productId: dto.productId,
+            batchId: batch.id,
+            type: movementType,
+            quantity: toConsume,
+            stockBefore: batchCurrent,
+            stockAfter: newQuantity,
+            warehouseOriginId: dto.warehouseId,
+            unitCost: batch.unitCost,
+            totalCost: toConsume.mul(batch.unitCost),
+            destinationType: dto.destinationType,
+            destinationRef: dto.destinationRef,
+            referenceType: dto.reason,
+            referenceId: dto.referenceId,
+            performedById: userId,
+            notes: dto.notes,
+          },
+        });
+
+        movements.push({
+          id: movement.id,
+          batchId: batch.id,
+          batchNumber: batch.batchNumber,
+          quantity: toConsume,
+          stockBefore: batchCurrent,
+          stockAfter: newQuantity,
+        });
+
+        remaining = remaining.sub(toConsume);
+
+        this.logger.debug(
+          `Consumed ${toConsume} from batch ${batch.batchNumber}. Remaining: ${remaining}`,
+        );
+      }
+
+      // Safety check (should never happen due to earlier validation)
+      if (remaining.gt(0)) {
+        throw new BadRequestException(
+          'Stock insuficiente después del procesamiento FIFO',
+        );
+      }
+
+      return movements;
+    });
+
+    this.logger.log(
+      `Outbound registered: ${requestedQuantity} units using ${result.length} batch(es)`,
+    );
+
+    return {
+      totalQuantity: requestedQuantity,
+      movements: result,
+      affectedBatches: result.length,
+    };
+  }
+
+  /**
+   * Map OutboundReason enum to MovementType enum
+   */
+  private mapReasonToMovementType(reason: OutboundReason): MovementType {
+    switch (reason) {
+      case OutboundReason.SALE:
+        return MovementType.SALE;
+      case OutboundReason.CONSUME:
+        return MovementType.CONSUME;
+      case OutboundReason.TRANSFER:
+        return MovementType.TRANSFER;
+      case OutboundReason.ADJUSTMENT:
+        return MovementType.AUDIT;
+      default:
+        return MovementType.OUT;
+    }
+  }
+
+  /**
+   * Get current stock for a product in a specific warehouse
+   */
+  async getProductStock(
+    tenantId: string,
+    productId: string,
+    warehouseId: string,
+  ): Promise<{
+    totalStock: Decimal;
+    batches: Array<{
+      batchNumber: string;
+      quantity: Decimal;
+      expiresAt: Date | null;
+    }>;
+  }> {
+    const batches = await this.prisma.batch.findMany({
+      where: {
+        tenantId,
+        productId,
+        warehouseId,
+        quantityCurrent: { gt: 0 },
+        isExhausted: false,
+      },
+      orderBy: { receivedAt: 'asc' },
+      select: {
+        batchNumber: true,
+        quantityCurrent: true,
+        expiresAt: true,
+      },
+    });
+
+    const totalStock = batches.reduce(
+      (sum, batch) => sum.add(batch.quantityCurrent),
+      new Decimal(0),
+    );
+
+    return {
+      totalStock,
+      batches: batches.map((b) => ({
+        batchNumber: b.batchNumber,
+        quantity: b.quantityCurrent,
+        expiresAt: b.expiresAt,
+      })),
+    };
+  }
+
+  /**
+   * Get batches that are expiring within a specified number of days
+   * @param tenantId - Tenant ID
+   * @param daysAhead - Number of days to look ahead (default: 30)
+   * @returns List of expiring batches with product and warehouse info
+   */
+  async getExpiringBatches(
+    tenantId: string,
+    daysAhead: number = 30,
+  ): Promise<{
+    count: number;
+    batches: Array<{
+      id: string;
+      batchNumber: string;
+      productId: string;
+      productName: string;
+      productSku: string;
+      warehouseId: string;
+      warehouseName: string;
+      quantityCurrent: Decimal;
+      expiresAt: Date;
+      daysUntilExpiry: number;
+      status: 'CRITICAL' | 'WARNING' | 'UPCOMING';
+    }>;
+  }> {
+    const now = new Date();
+    const deadline = new Date();
+    deadline.setDate(deadline.getDate() + daysAhead);
+
+    const batches = await this.prisma.batch.findMany({
+      where: {
+        tenantId,
+        expiresAt: {
+          lte: deadline,
+          not: null,
+        },
+        isExhausted: false,
+        quantityCurrent: { gt: 0 },
+      },
+      orderBy: { expiresAt: 'asc' },
+      include: {
+        product: { select: { id: true, name: true, sku: true } },
+        warehouse: { select: { id: true, name: true } },
+      },
+    });
+
+    const result = batches.map((batch) => {
+      const expiresAt = batch.expiresAt!;
+      const daysUntilExpiry = Math.ceil(
+        (expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+      );
+
+      let status: 'CRITICAL' | 'WARNING' | 'UPCOMING';
+      if (daysUntilExpiry <= 0) {
+        status = 'CRITICAL'; // Already expired
+      } else if (daysUntilExpiry <= 7) {
+        status = 'WARNING'; // Expiring within a week
+      } else {
+        status = 'UPCOMING'; // Expiring soon but not urgent
+      }
+
+      return {
+        id: batch.id,
+        batchNumber: batch.batchNumber,
+        productId: batch.product.id,
+        productName: batch.product.name,
+        productSku: batch.product.sku,
+        warehouseId: batch.warehouse.id,
+        warehouseName: batch.warehouse.name,
+        quantityCurrent: batch.quantityCurrent,
+        expiresAt,
+        daysUntilExpiry,
+        status,
+      };
+    });
+
+    this.logger.log(
+      `Found ${result.length} batches expiring within ${daysAhead} days for tenant ${tenantId}`,
+    );
+
+    return {
+      count: result.length,
+      batches: result,
+    };
+  }
+}
+
