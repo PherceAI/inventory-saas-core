@@ -12,54 +12,109 @@ import {
     User,
     Percent,
     ScanBarcode,
-    LayoutGrid,
-    List
+    Package,
+    Settings
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { ScrollArea } from "@/components/ui/scroll-area" // Assuming this exists or using div overflow
-import { Separator } from "@/components/ui/separator" // Assuming exists or using hr
-import { Badge } from "@/components/ui/badge" // Assuming exists or div
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Separator } from "@/components/ui/separator"
+import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
+import { ProductsService } from "@/services/products.service"
+import Link from "next/link"
 
-// --- Mock Data ---
-const PRODUCTS = [
-    { id: "1", name: "Laptop Gamer X1", price: 1250.00, category: "Computers", image: "💻", stock: 15 },
-    { id: "2", name: "Mouse Wireless Pro", price: 45.90, category: "Accessories", image: "🖱️", stock: 42 },
-    { id: "3", name: "Mechanical Keyboard", price: 85.00, category: "Accessories", image: "⌨️", stock: 12 },
-    { id: "4", name: "Monitor 27 4K", price: 320.00, category: "Monitors", image: "🖥️", stock: 8 },
-    { id: "5", name: "USB-C Hub", price: 29.99, category: "Accessories", image: "🔌", stock: 100 },
-    { id: "6", name: "Headset 7.1", price: 65.00, category: "Audio", image: "🎧", stock: 25 },
-    { id: "7", name: "Webcam HD", price: 55.00, category: "Cameras", image: "📷", stock: 18 },
-    { id: "8", name: "Desk Mat", price: 15.00, category: "Accessories", image: "⬛", stock: 50 },
-    { id: "9", name: "Gaming Chair", price: 250.00, category: "Furniture", image: "💺", stock: 5 },
-]
-
-const CATEGORIES = ["All", "Computers", "Accessories", "Monitors", "Audio", "Cameras", "Furniture"]
+interface Product {
+    id: string
+    name: string
+    price: number
+    category: string
+    image: string
+    stock: number
+}
 
 interface CartItem {
     id: string
-    product: typeof PRODUCTS[0]
+    product: Product
     quantity: number
 }
 
 export default function PosPage() {
+    const [products, setProducts] = useState<Product[]>([])
+    const [categories, setCategories] = useState<string[]>(["All"])
+    const [isLoading, setIsLoading] = useState(true)
     const [searchQuery, setSearchQuery] = useState("")
     const [selectedCategory, setSelectedCategory] = useState("All")
     const [cart, setCart] = useState<CartItem[]>([])
-    const [customer, setCustomer] = useState("Public General")
+    const [customer, setCustomer] = useState("Público General")
     const scanInputRef = useRef<HTMLInputElement>(null)
 
+    // Fetch products from API
+    useEffect(() => {
+        const fetchProducts = async () => {
+            try {
+                setIsLoading(true)
+                const response = await ProductsService.getAll({ limit: 100 })
+                const productsData = response.data || response || []
+
+                // Map API response to POS product format
+                const mapped: Product[] = productsData.map((p: any) => {
+                    const stockLevel = p.batches?.reduce(
+                        (sum: number, batch: any) => sum + Number(batch.quantityCurrent || 0),
+                        0
+                    ) ?? p.stockLevel ?? 0
+
+                    return {
+                        id: p.id,
+                        name: p.name,
+                        price: p.priceDefault || p.costAverage || 0,
+                        category: p.category?.name || 'Sin categoría',
+                        image: getProductEmoji(p.category?.name || ''),
+                        stock: stockLevel
+                    }
+                })
+
+                setProducts(mapped)
+
+                // Extract unique categories
+                const uniqueCategories = ['All', ...new Set(mapped.map(p => p.category))]
+                setCategories(uniqueCategories)
+            } catch (error) {
+                console.error('Error fetching products:', error)
+                setProducts([])
+            } finally {
+                setIsLoading(false)
+            }
+        }
+
+        fetchProducts()
+    }, [])
+
+    // Helper to assign emoji based on category
+    const getProductEmoji = (category: string): string => {
+        const emojiMap: Record<string, string> = {
+            'Electrónica': '💻',
+            'Accesorios': '🖱️',
+            'Monitores': '🖥️',
+            'Audio': '🎧',
+            'Cámaras': '📷',
+            'Muebles': '💺',
+            'Alimentos': '🍔',
+            'Bebidas': '🥤',
+            'Limpieza': '🧹',
+            'Oficina': '📎',
+        }
+        return emojiMap[category] || '📦'
+    }
+
     // Filter Logic
-    const filteredProducts = PRODUCTS.filter(product => {
+    const filteredProducts = products.filter(product => {
         const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) || product.id.includes(searchQuery)
         const matchesCategory = selectedCategory === "All" || product.category === selectedCategory
         return matchesSearch && matchesCategory
     })
 
     // Cart Actions
-    const addToCart = (product: typeof PRODUCTS[0]) => {
+    const addToCart = (product: Product) => {
         setCart(prev => {
             const existing = prev.find(item => item.product.id === product.id)
             if (existing) {
@@ -95,6 +150,70 @@ export default function PosPage() {
     const tax = subtotal * taxRate
     const total = subtotal + tax
 
+    // Empty state when no products
+    if (!isLoading && products.length === 0) {
+        return (
+            <div className="flex h-[calc(100vh-theme(spacing.16))] w-full items-center justify-center bg-slate-50/50">
+                <div className="text-center max-w-md p-8">
+                    <div className="mx-auto w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mb-4">
+                        <Package className="h-8 w-8 text-slate-400" />
+                    </div>
+                    <h2 className="text-xl font-bold text-slate-700 mb-2">No hay productos configurados</h2>
+                    <p className="text-slate-500 mb-6">
+                        Para usar el Punto de Venta, primero necesitas agregar productos a tu inventario.
+                    </p>
+                    <div className="flex flex-col gap-3">
+                        <Button asChild className="gap-2">
+                            <Link href="/dashboard/products/new">
+                                <Plus className="h-4 w-4" />
+                                Agregar Productos
+                            </Link>
+                        </Button>
+                        <Button asChild variant="outline" className="gap-2">
+                            <Link href="/dashboard/inventory">
+                                <Settings className="h-4 w-4" />
+                                Ir a Inventario
+                            </Link>
+                        </Button>
+                    </div>
+                </div>
+            </div>
+        )
+    }
+
+    // Loading state
+    if (isLoading) {
+        return (
+            <div className="flex h-[calc(100vh-theme(spacing.16))] w-full bg-slate-50/50 overflow-hidden">
+                <div className="flex-1 flex flex-col border-r border-slate-200 h-full overflow-hidden">
+                    <div className="bg-white p-4 border-b border-slate-100 space-y-4">
+                        <Skeleton className="h-10 w-full" />
+                        <div className="flex gap-2">
+                            {[1, 2, 3, 4, 5].map(i => (
+                                <Skeleton key={i} className="h-8 w-20" />
+                            ))}
+                        </div>
+                    </div>
+                    <div className="flex-1 p-6">
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                            {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
+                                <Skeleton key={i} className="h-48" />
+                            ))}
+                        </div>
+                    </div>
+                </div>
+                <div className="w-[400px] bg-white p-4">
+                    <Skeleton className="h-12 w-full mb-4" />
+                    <div className="space-y-3">
+                        {[1, 2, 3].map(i => (
+                            <Skeleton key={i} className="h-16 w-full" />
+                        ))}
+                    </div>
+                </div>
+            </div>
+        )
+    }
+
     return (
         <div className="flex h-[calc(100vh-theme(spacing.16))] w-full bg-slate-50/50 overflow-hidden">
 
@@ -109,7 +228,7 @@ export default function PosPage() {
                             <Input
                                 ref={scanInputRef}
                                 className="pl-10 h-10 w-full bg-slate-50 border-slate-200 focus-visible:ring-emerald-500"
-                                placeholder="Search products or scan barcode..."
+                                placeholder="Buscar producto o escanear código..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 autoFocus
@@ -121,7 +240,7 @@ export default function PosPage() {
                     </div>
 
                     <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                        {CATEGORIES.map(cat => (
+                        {categories.map(cat => (
                             <button
                                 key={cat}
                                 onClick={() => setSelectedCategory(cat)}
@@ -132,7 +251,7 @@ export default function PosPage() {
                                         : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
                                 )}
                             >
-                                {cat}
+                                {cat === 'All' ? 'Todos' : cat}
                             </button>
                         ))}
                     </div>
@@ -163,7 +282,7 @@ export default function PosPage() {
                         {filteredProducts.length === 0 && (
                             <div className="col-span-full flex flex-col items-center justify-center h-64 text-slate-400">
                                 <Search className="h-10 w-10 mb-2 opacity-20" />
-                                <p>No products found.</p>
+                                <p>No se encontraron productos.</p>
                             </div>
                         )}
                     </div>
@@ -180,7 +299,7 @@ export default function PosPage() {
                             <User className="h-5 w-5" />
                         </div>
                         <div>
-                            <div className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Customer</div>
+                            <div className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Cliente</div>
                             <div className="font-semibold text-slate-900 cursor-pointer hover:underline decoration-dashed decoration-slate-300 underline-offset-4 text-sm">
                                 {customer}
                             </div>
@@ -196,7 +315,7 @@ export default function PosPage() {
                     {cart.length === 0 ? (
                         <div className="flex flex-col items-center justify-center h-full text-slate-300 space-y-4">
                             <ShoppingCart className="h-10 w-10 opacity-20" />
-                            <p className="text-sm font-medium text-center max-w-[150px]">Cart is empty</p>
+                            <p className="text-sm font-medium text-center max-w-[150px]">Carrito vacío</p>
                         </div>
                     ) : (
                         cart.map(item => (
@@ -246,11 +365,11 @@ export default function PosPage() {
                             <span className="font-medium text-slate-900">${subtotal.toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between text-sm">
-                            <span className="text-slate-500">Tax (16%)</span>
+                            <span className="text-slate-500">IVA (16%)</span>
                             <span className="font-medium text-slate-900">${tax.toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between text-sm text-amber-600 font-medium">
-                            <span className="flex items-center gap-1"><Percent className="h-3 w-3" /> Discount</span>
+                            <span className="flex items-center gap-1"><Percent className="h-3 w-3" /> Descuento</span>
                             <span>-$0.00</span>
                         </div>
                         <Separator className="bg-slate-200 my-2" />
@@ -263,13 +382,13 @@ export default function PosPage() {
                     <div className="grid grid-cols-2 gap-3">
                         <Button variant="outline" className="h-12 border-slate-200 text-slate-600 hover:text-red-600 hover:border-red-200 hover:bg-red-50" onClick={clearCart}>
                             <Trash2 className="h-4 w-4 mr-2" />
-                            Cancel
+                            Cancelar
                         </Button>
                         <Button className="h-12 bg-slate-900 hover:bg-slate-800 text-white shadow-sm">
-                            Hold Ticket
+                            Guardar Ticket
                         </Button>
                         <Button className="col-span-2 h-14 bg-emerald-500 hover:bg-emerald-600 text-white text-lg font-bold shadow-sm active:scale-[0.99] transition-all">
-                            Charge ${total.toFixed(2)}
+                            Cobrar ${total.toFixed(2)}
                         </Button>
                     </div>
                 </div>

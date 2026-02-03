@@ -1,6 +1,24 @@
 import api from './api.service';
 
+
+export interface Product {
+    id: string;
+    name: string;
+    sku: string;
+    description?: string;
+    category?: { id: string; name: string };
+    categoryId: string;
+    familyId?: string;
+    stockLevel: number;
+    stockMin: number;
+    costAverage: number;
+    priceDefault: number;
+    isActive: boolean;
+    preferredSupplier?: { id: string; name: string };
+}
+
 export interface CreateProductDto {
+
     name: string;
     sku: string;
     description?: string;

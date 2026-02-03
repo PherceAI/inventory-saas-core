@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import { AuthProvider } from "@/lib/auth";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -9,7 +10,7 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: "Clarigo",
-  description: "High-End SaaS Dashboard",
+  description: "Sistema de gestión de inventario empresarial",
 };
 
 export default function RootLayout({
@@ -18,11 +19,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="es">
       <body
         className={`${inter.variable} font-sans antialiased`}
       >
-        {children}
+        <AuthProvider>
+          {children}
+        </AuthProvider>
       </body>
     </html>
   );

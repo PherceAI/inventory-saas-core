@@ -1,53 +1,68 @@
-import { DataTable } from "@/components/ui/data-table"
-import { columns } from "./columns"
-import { Card, CardContent, CardHeader } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Plus, Download, FileSpreadsheet } from "lucide-react"
+'use client';
 
-async function getData() {
-    // MOCK DATA - To be replaced with API call
-    return [
-        {
-            id: "1",
-            orderNumber: "PO-2025-001",
-            supplierName: "TechWorld Inc.",
-            status: "DRAFT",
-            total: 0,
-            expectedAt: null,
-            createdAt: "2025-01-28T10:00:00Z"
-        },
-        {
-            id: "2",
-            orderNumber: "PO-2025-002",
-            supplierName: "Global Supplies Ltd.",
-            status: "ORDERED",
-            total: 4500.50,
-            expectedAt: "2025-02-15T00:00:00Z",
-            createdAt: "2025-01-29T14:30:00Z"
-        },
-        {
-            id: "3",
-            orderNumber: "PO-2025-003",
-            supplierName: "Insumos del Valle",
-            status: "RECEIVED",
-            total: 1250.00,
-            expectedAt: "2025-01-30T00:00:00Z",
-            createdAt: "2025-01-20T09:15:00Z"
-        },
-        {
-            id: "4",
-            orderNumber: "PO-2025-004",
-            supplierName: "TechWorld Inc.",
-            status: "CANCELLED",
-            total: 800.00,
-            expectedAt: null,
-            createdAt: "2025-01-31T11:20:00Z"
-        },
-    ]
-}
+import { useEffect, useState } from 'react';
+import { DataTable } from "@/components/ui/data-table";
+import { columns, PurchaseOrder } from "./columns";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Plus, Download, FileSpreadsheet, FileText } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/shared/empty-state";
+import { getOrders } from "@/services/orders.service";
 
-export default async function OrdersPage() {
-    const data = await getData()
+export default function OrdersPage() {
+    const [data, setData] = useState<PurchaseOrder[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchData = async () => {
+            try {
+                setIsLoading(true);
+                const orders = await getOrders();
+                // Map API response to table format
+                const mapped: PurchaseOrder[] = (orders || []).map((o: any) => ({
+                    id: o.id,
+                    orderNumber: o.orderNumber || `PO-${o.id.substring(0, 6).toUpperCase()}`,
+                    supplierName: o.supplier?.name || o.supplierName || '-',
+                    status: (o.status || 'DRAFT') as PurchaseOrder['status'],
+                    total: o.total || 0,
+                    expectedAt: o.expectedAt,
+                    createdAt: o.createdAt,
+                }));
+                setData(mapped);
+            } catch (error) {
+                console.error('Error fetching orders:', error);
+                setData([]);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchData();
+    }, []);
+
+    if (isLoading) {
+        return (
+            <div className="flex h-full flex-col gap-6">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <Skeleton className="h-8 w-56 mb-2" />
+                        <Skeleton className="h-4 w-72" />
+                    </div>
+                    <Skeleton className="h-10 w-36" />
+                </div>
+                <Card className="border-none shadow-sm">
+                    <CardContent className="p-6">
+                        <div className="space-y-4">
+                            {[1, 2, 3, 4, 5].map((i) => (
+                                <Skeleton key={i} className="h-12 w-full" />
+                            ))}
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
+        );
+    }
 
     return (
         <div className="flex h-full flex-col gap-6">
@@ -63,44 +78,44 @@ export default async function OrdersPage() {
                 </Button>
             </div>
 
-            {/* Data Surface */}
-            <Card className="border-none shadow-sm overflow-hidden rounded-xl bg-white">
-                <CardHeader className="border-b border-slate-100 bg-white px-6 py-4">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold text-slate-900">Historial de Órdenes</span>
-                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{data.length}</span>
+            {/* Empty State or Data Table */}
+            {data.length === 0 ? (
+                <EmptyState
+                    icon={FileText}
+                    title="No hay órdenes de compra"
+                    description="Crea tu primera orden de compra para solicitar productos a tus proveedores."
+                    ctaLabel="Crear Primera Orden"
+                    ctaHref="/dashboard/orders/new"
+                />
+            ) : (
+                <Card className="border-none shadow-sm overflow-hidden rounded-xl bg-white">
+                    <CardHeader className="border-b border-slate-100 bg-white px-6 py-4">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm font-semibold text-slate-900">Historial de Órdenes</span>
+                                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{data.length}</span>
+                            </div>
+                            <div className="flex gap-2">
+                                <Button variant="outline" size="sm" className="h-8 text-slate-600">
+                                    <FileSpreadsheet className="mr-2 h-3.5 w-3.5" /> Reporte
+                                </Button>
+                                <Button variant="outline" size="sm" className="h-8 text-slate-600">
+                                    <Download className="mr-2 h-3.5 w-3.5" /> Exportar
+                                </Button>
+                            </div>
                         </div>
-                        <div className="flex gap-2">
-                            <Button variant="outline" size="sm" className="h-8 text-slate-600">
-                                <FileSpreadsheet className="mr-2 h-3.5 w-3.5" /> Reporte
-                            </Button>
-                            <Button variant="outline" size="sm" className="h-8 text-slate-600">
-                                <Download className="mr-2 h-3.5 w-3.5" /> Exportar
-                            </Button>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                        <div className="p-6">
+                            <DataTable
+                                columns={columns}
+                                data={data}
+                                searchKey="orderNumber"
+                            />
                         </div>
-                    </div>
-                </CardHeader>
-                <CardContent className="p-0">
-                    <div className="p-6">
-                        <DataTable
-                            columns={columns}
-                            data={data}
-                            searchKey="orderNumber"
-                            customFilters={
-                                <div className="flex gap-2">
-                                    <select className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-600 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20">
-                                        <option>Estado</option>
-                                        <option>Borrador</option>
-                                        <option>Pendiente</option>
-                                        <option>Recibido</option>
-                                    </select>
-                                </div>
-                            }
-                        />
-                    </div>
-                </CardContent>
-            </Card>
+                    </CardContent>
+                </Card>
+            )}
         </div>
-    )
+    );
 }

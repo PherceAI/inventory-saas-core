@@ -16,7 +16,7 @@ api.interceptors.request.use(
         // Only run on client-side
         if (typeof window !== 'undefined') {
             const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
-            const tenantId = localStorage.getItem('tenantId'); // Or however we store the active tenant
+            const tenantId = localStorage.getItem('tenantId');
 
             if (token) {
                 config.headers.Authorization = `Bearer ${token}`;
@@ -24,12 +24,9 @@ api.interceptors.request.use(
 
             if (tenantId) {
                 config.headers['x-tenant-id'] = tenantId;
-            } else {
-                // FALLBACK FOR DEV: Use a hardcoded tenant ID if none found (Remove in Prod)
-                const DEV_TENANT_ID = 'd9b2d63d-a233-4123-8473-1952d6727289';
-                console.warn(`⚠️ No Tenant ID found in localStorage. Using DEV Fallback: ${DEV_TENANT_ID}`);
-                config.headers['x-tenant-id'] = DEV_TENANT_ID;
             }
+            // No fallback - if no tenant, the backend will return appropriate error
+            // This ensures new users don't see other tenant's data
         }
         return config;
     },

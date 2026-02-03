@@ -115,7 +115,7 @@ export function CreateProductModal({ children }: CreateProductModalProps) {
         <Dialog open={open} onOpenChange={setOpen}>
             {children && <DialogTrigger asChild>{children}</DialogTrigger>}
 
-            <DialogContent className="w-full max-w-[95vw] md:max-w-4xl p-0 flex flex-col gap-0 rounded-2xl border-none shadow-2xl bg-white overflow-hidden my-auto outline-none max-h-[90vh]">
+            <DialogContent className="w-screen h-screen max-w-none rounded-none border-none p-0 flex flex-col gap-0 bg-white shadow-none my-0">
 
                 {/* 1. Header */}
                 <div className="bg-white px-8 py-6 border-b border-slate-100 shrink-0">

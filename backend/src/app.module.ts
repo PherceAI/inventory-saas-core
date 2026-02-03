@@ -14,6 +14,7 @@ import { PurchaseOrdersModule } from './modules/purchase-orders/index.js';
 import { AccountsPayableModule } from './modules/accounts-payable/index.js';
 import { FamiliesModule } from './modules/families/index.js';
 import { AuditsModule } from './modules/audits/index.js';
+import { DashboardModule } from './modules/dashboard/index.js';
 import { TenantGuard } from './common/guards/index.js';
 
 @Module({
@@ -42,6 +43,7 @@ import { TenantGuard } from './common/guards/index.js';
     AccountsPayableModule,
     FamiliesModule,
     AuditsModule,
+    DashboardModule,
   ],
   controllers: [],
   providers: [
