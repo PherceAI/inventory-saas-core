@@ -2,8 +2,31 @@ import api from './api.service';
 
 export interface Supplier {
     id: string;
+    code: string;
     name: string;
-    // Add other fields as needed
+    taxId?: string; // RUC
+    contactName?: string;
+    email?: string;
+    phone?: string;
+    address?: string;
+    paymentTermDays: number;
+    currency: string;
+    rating?: number;
+    isActive: boolean;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface CreateSupplierDto {
+    name: string;
+    taxId?: string;
+    contactName?: string;
+    email?: string;
+    phone?: string;
+    address?: string;
+    paymentTermDays?: number;
+    currency?: string;
+    code?: string;
 }
 
 export const SuppliersService = {
@@ -12,5 +35,12 @@ export const SuppliersService = {
         return response.data;
     },
 
-    // Potentially add create/update methods later
+    create: async (data: CreateSupplierDto) => {
+        const response = await api.post<Supplier>('/suppliers', data);
+        return response.data;
+    },
+
+    delete: async (id: string) => {
+        await api.delete(`/suppliers/${id}`);
+    }
 };

@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import TenantSelector from '@/components/auth/TenantSelector';
 import { TenantWithRole } from '@/services/auth.service';
-import { Lock, Mail, AlertCircle, Loader2 } from 'lucide-react';
+import { Lock, Mail, AlertCircle, Loader2, ArrowLeft } from 'lucide-react';
 
 export default function LoginPage() {
     const [email, setEmail] = useState('');
@@ -59,7 +59,11 @@ export default function LoginPage() {
     }
 
     return (
-        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 relative">
+            <Link href="/" className="absolute top-4 left-4 md:top-8 md:left-8 flex items-center gap-2 text-slate-600 hover:text-primary transition-colors font-medium">
+                <ArrowLeft size={20} />
+                <span>Volver al inicio</span>
+            </Link>
             <div className="w-full max-w-md">
                 {/* Logo */}
                 <div className="text-center mb-8">

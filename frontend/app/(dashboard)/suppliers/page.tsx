@@ -8,7 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Plus, Download, Users } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/shared/empty-state";
-import { SuppliersService, Supplier } from "@/services/suppliers.service";
+import { CreateSupplierModal } from "@/components/modules/suppliers/create-supplier-modal";
+import { SuppliersService, Supplier, CreateSupplierDto } from "@/services/suppliers.service";
+import { useToast } from "@/hooks/use-toast";
 
 interface SupplierRow {
     id: string;
@@ -24,34 +26,59 @@ interface SupplierRow {
 export default function SuppliersPage() {
     const [data, setData] = useState<SupplierRow[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+    const { toast } = useToast();
+
+    const fetchData = async () => {
+        try {
+            setIsLoading(true);
+            const suppliers = await SuppliersService.getAll();
+            // Map API response to table format
+            const mapped: SupplierRow[] = (suppliers || []).map((s: any) => ({
+                id: s.id,
+                code: s.code || `SUP-${s.id.substring(0, 4).toUpperCase()}`,
+                name: s.name,
+                contactName: s.contactName || '-',
+                email: s.email || '-',
+                paymentTermDays: s.paymentTermDays || 0,
+                isActive: s.isActive ?? true,
+                rating: s.rating || 0,
+            }));
+            setData(mapped);
+        } catch (error) {
+            console.error('Error fetching suppliers:', error);
+            toast({
+                title: "Error",
+                description: "No se pudieron cargar los proveedores.",
+                variant: "destructive"
+            });
+            setData([]);
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     useEffect(() => {
-        const fetchData = async () => {
-            try {
-                setIsLoading(true);
-                const suppliers = await SuppliersService.getAll();
-                // Map API response to table format
-                const mapped: SupplierRow[] = (suppliers || []).map((s: any) => ({
-                    id: s.id,
-                    code: s.code || `SUP-${s.id.substring(0, 4).toUpperCase()}`,
-                    name: s.name,
-                    contactName: s.contactName || '-',
-                    email: s.email || '-',
-                    paymentTermDays: s.paymentTermDays || 0,
-                    isActive: s.isActive ?? true,
-                    rating: s.rating || 0,
-                }));
-                setData(mapped);
-            } catch (error) {
-                console.error('Error fetching suppliers:', error);
-                setData([]);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
         fetchData();
     }, []);
+
+    const handleCreateSupplier = async (data: CreateSupplierDto) => {
+        try {
+            await SuppliersService.create(data);
+            toast({
+                title: "Proveedor creado",
+                description: `Se ha registrado a ${data.name} exitosamente.`,
+            });
+            fetchData(); // Refresh list
+        } catch (error) {
+            toast({
+                title: "Error",
+                description: "No se pudo crear el proveedor. Verifica si el código o RUC ya existen.",
+                variant: "destructive"
+            });
+            throw error; // Re-throw so modal stays open or handles state
+        }
+    };
 
     if (isLoading) {
         return (
@@ -84,7 +111,7 @@ export default function SuppliersPage() {
                     <h1 className="text-3xl font-bold tracking-tight text-slate-900">Proveedores</h1>
                     <p className="text-slate-500 text-base">Gestión de relaciones y cuentas por pagar.</p>
                 </div>
-                <Button className="gap-2 shadow-lg shadow-primary/20">
+                <Button className="gap-2 shadow-lg shadow-primary/20" onClick={() => setIsCreateModalOpen(true)}>
                     <Plus className="h-4 w-4" />
                     Nuevo Proveedor
                 </Button>
@@ -97,7 +124,7 @@ export default function SuppliersPage() {
                     title="No hay proveedores registrados"
                     description="Agrega tu primer proveedor para comenzar a gestionar órdenes de compra y pagos."
                     ctaLabel="Agregar Proveedor"
-                    ctaHref="/dashboard/suppliers/new"
+                    ctaAction={() => setIsCreateModalOpen(true)}
                 />
             ) : (
                 <Card className="border-none shadow-sm overflow-hidden rounded-xl bg-white">
@@ -119,6 +146,12 @@ export default function SuppliersPage() {
                     </CardContent>
                 </Card>
             )}
+
+            <CreateSupplierModal
+                open={isCreateModalOpen}
+                onOpenChange={setIsCreateModalOpen}
+                onSubmit={handleCreateSupplier}
+            />
         </div>
     );
 }
