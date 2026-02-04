@@ -9,7 +9,7 @@ import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class SuppliersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   async create(tenantId: string, createSupplierDto: CreateSupplierDto) {
     try {
@@ -37,9 +37,12 @@ export class SuppliersService {
     }
   }
 
-  async findAll(tenantId: string) {
+  async findAll(tenantId: string, includeInactive = false) {
     return this.prisma.supplier.findMany({
-      where: { tenantId },
+      where: {
+        tenantId,
+        ...(!includeInactive && { isActive: true }) // Default: active only
+      },
       orderBy: { createdAt: 'desc' },
     });
   }

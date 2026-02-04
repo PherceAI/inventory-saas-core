@@ -9,8 +9,8 @@ export interface CreatePurchaseOrderDto {
 
 export interface AddOrderItemDto {
     productId: string;
-    quantity: number;
-    unitCost: number;
+    quantityOrdered: number;
+    unitPrice: number;
     taxRate?: number;
     discount?: number;
 }

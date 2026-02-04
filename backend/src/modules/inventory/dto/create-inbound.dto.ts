@@ -83,4 +83,28 @@ export class CreateInboundMovementDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  @ApiPropertyOptional({
+    description: 'Número de factura para generar cuenta por pagar',
+    example: 'FAC-12345',
+  })
+  @IsString()
+  @IsOptional()
+  invoiceNumber?: string;
+
+  @ApiPropertyOptional({
+    description: 'Generar cuenta por pagar automáticamente',
+    example: true,
+  })
+  @IsOptional()
+  createPayable?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Días de crédito para la cuenta por pagar',
+    example: 30,
+  })
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  paymentTermDays?: number;
 }

@@ -20,24 +20,35 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ProductInboundModal } from "@/components/modules/inventory/product-inbound-modal";
 import { ProductTransferModal } from "@/components/modules/inventory/product-transfer-modal";
-import { CreateProductModal } from "@/components/modules/inventory/create-product-modal";
 import { CreateAuditModal } from "@/components/modules/inventory/create-audit-modal";
 import { CreatePurchaseOrderModal } from "@/components/modules/inventory/create-purchase-order-modal";
 import { ProductsService } from "@/services/products.service";
 
-const ActionButton = React.forwardRef(({ icon: Icon, label, desc, color, bg, primary, ...props }: any, ref: any) => {
+const ActionButton = React.forwardRef(({ icon: Icon, label, desc, sectionColor, ...props }: any, ref: any) => {
+    // Mapa de estilos basados en color semántico
+    const colorStyles: Record<string, { bg: string, text: string, border: string, iconBg: string }> = {
+        emerald: { bg: 'hover:bg-emerald-50/50', text: 'group-hover:text-emerald-700', border: 'hover:border-emerald-200', iconBg: 'bg-emerald-100/50 text-emerald-600' },
+        blue: { bg: 'hover:bg-blue-50/50', text: 'group-hover:text-blue-700', border: 'hover:border-blue-200', iconBg: 'bg-blue-100/50 text-blue-600' },
+        indigo: { bg: 'hover:bg-indigo-50/50', text: 'group-hover:text-indigo-700', border: 'hover:border-indigo-200', iconBg: 'bg-indigo-100/50 text-indigo-600' },
+        amber: { bg: 'hover:bg-amber-50/50', text: 'group-hover:text-amber-700', border: 'hover:border-amber-200', iconBg: 'bg-amber-100/50 text-amber-600' },
+        slate: { bg: 'hover:bg-slate-50/80', text: 'group-hover:text-slate-800', border: 'hover:border-slate-300', iconBg: 'bg-slate-100 text-slate-600' },
+        violet: { bg: 'hover:bg-violet-50/50', text: 'group-hover:text-violet-700', border: 'hover:border-violet-200', iconBg: 'bg-violet-100/50 text-violet-600' },
+    };
+
+    const style = colorStyles[sectionColor] || colorStyles.slate;
+
     return (
         <button
             ref={ref}
             {...props}
-            className={`group flex items-center gap-4 rounded-xl border p-4 text-left shadow-sm transition-all hover:border-primary/50 hover:shadow-md active:scale-95 ${primary ? 'border-primary/20 bg-primary/5' : 'border-slate-100 bg-white'}`}
+            className={`group flex h-full w-full flex-col justify-between gap-3 rounded-2xl border border-slate-200/60 bg-white p-5 text-left shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-md ${style.border} ${style.bg}`}
         >
-            <div className={`rounded-lg p-2.5 ${bg} ${color} transition-colors group-hover:bg-white`}>
-                <Icon className="h-5 w-5" />
+            <div className={`w-fit rounded-xl p-3 transition-colors ${style.iconBg}`}>
+                <Icon className="h-6 w-6" strokeWidth={1.5} />
             </div>
             <div>
-                <p className={`font-bold text-sm ${primary ? 'text-primary' : 'text-slate-700'}`}>{label}</p>
-                <p className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold">{desc}</p>
+                <p className={`font-bold text-slate-700 transition-colors ${style.text}`}>{label}</p>
+                <p className="mt-1 text-xs font-medium text-slate-400 group-hover:text-slate-500">{desc}</p>
             </div>
         </button>
     );
@@ -95,14 +106,14 @@ export default function InventoryPage() {
 
     if (isLoading) {
         return (
-            <div className="flex h-full flex-col gap-6">
+            <div className="flex h-full flex-col gap-8 p-2">
                 <div>
                     <Skeleton className="h-8 w-48 mb-2" />
                     <Skeleton className="h-4 w-64" />
                 </div>
-                <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
                     {[1, 2, 3, 4, 5].map((i) => (
-                        <Skeleton key={i} className="h-20" />
+                        <Skeleton key={i} className="h-32 rounded-2xl" />
                     ))}
                 </div>
                 <Card className="border-none shadow-sm">
@@ -119,63 +130,57 @@ export default function InventoryPage() {
     }
 
     return (
-        <div className="flex h-full flex-col gap-6">
+        <div className="flex h-full flex-col gap-8">
             {/* 1. Header Section */}
-            <div>
-                <h1 className="text-3xl font-bold tracking-tight text-slate-900">Inventario General</h1>
-                <p className="text-slate-500 text-base">Gestión centralizada de productos y existencias.</p>
+            <div className='flex items-end justify-between'>
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight text-slate-900">Inventario General</h1>
+                    <p className="mt-2 text-slate-500">Gestión centralizada de productos y existencias.</p>
+                </div>
             </div>
 
-            {/* 2. Action Buttons Bar */}
-
-            {/* 2. Action Buttons Bar */}
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
-                <ProductInboundModal>
+            {/* 2. Action Buttons Bar - Premium Tiles */}
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-5">
+                <Link href="/inventory/inbound/new">
                     <ActionButton
                         icon={ArrowDownToLine}
-                        label="Ingreso de Productos"
-                        desc="Registrar entradas"
-                        color="text-emerald-600"
-                        bg="bg-emerald-50"
+                        label="Entrada Stock"
+                        desc="Registrar ingresos"
+                        sectionColor="emerald"
                     />
-                </ProductInboundModal>
-                <ProductTransferModal>
+                </Link>
+                <Link href="/inventory/transfer/new">
                     <ActionButton
                         icon={ArrowRightLeft}
-                        label="Traslado"
-                        desc="Entre bodegas"
-                        color="text-blue-600"
-                        bg="bg-blue-50"
+                        label="Traslados"
+                        desc="Mover entre almacenes"
+                        sectionColor="blue"
                     />
-                </ProductTransferModal>
-                <CreateProductModal>
+                </Link>
+                <Link href="/inventory/products/new">
                     <ActionButton
                         icon={Plus}
                         label="Nuevo Producto"
-                        desc="Crear SKU"
-                        color="text-indigo-600"
-                        bg="bg-indigo-50"
-                        primary
+                        desc="Crear SKU en catálogo"
+                        sectionColor="indigo"
                     />
-                </CreateProductModal>
-                <CreateAuditModal>
+                </Link>
+                <Link href="/inventory/audit/new">
                     <ActionButton
                         icon={ClipboardCheck}
-                        label="Realizar Auditoría"
-                        desc="Verificar stock"
-                        color="text-amber-600"
-                        bg="bg-amber-50"
+                        label="Auditoría"
+                        desc="Cuadre de inventario"
+                        sectionColor="amber"
                     />
-                </CreateAuditModal>
-                <CreatePurchaseOrderModal>
+                </Link>
+                <Link href="/inventory/orders/new">
                     <ActionButton
                         icon={FileText}
-                        label="Orden de Compra"
-                        desc="Generar pedido"
-                        color="text-slate-600"
-                        bg="bg-slate-50"
+                        label="Orden Compra"
+                        desc="Reaprovisionamiento"
+                        sectionColor="violet"
                     />
-                </CreatePurchaseOrderModal>
+                </Link>
             </div>
 
 

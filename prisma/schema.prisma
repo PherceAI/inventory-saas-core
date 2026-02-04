@@ -1,16 +1,3 @@
-// ============================================================================
-// SCHEMA PRISMA - Sistema de Inventario SaaS Multi-tenant
-// ============================================================================
-// PostgreSQL + Prisma ORM | Multi-tenancy con tenant_id
-// Diseñado para: Hoteles, Restaurantes, Retail
-// 
-// Decisiones Arquitectónicas:
-// - UUID como PK: Seguridad + compatibilidad con sistemas distribuidos
-// - TIMESTAMPTZ: Todas las fechas con zona horaria
-// - Decimal para dinero: Precisión financiera (no Float)
-// - tenant_id en TODAS las tablas: Aislamiento de datos
-// ============================================================================
-
 generator client {
   provider = "prisma-client-js"
   output   = "../backend/node_modules/.prisma/client"
@@ -21,116 +8,32 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ============================================================================
-// ENUMS
-// ============================================================================
-
-/// Tipo de movimiento de inventario
-enum MovementType {
-  IN        // Ingreso de mercancía
-  OUT       // Egreso/Salida
-  TRANSFER  // Traslado entre bodegas
-  AUDIT     // Ajuste por auditoría
-  SALE      // Venta (Retail/POS)
-  CONSUME   // Consumo interno (Hotel/Restaurante)
-}
-
-/// Estado de cuenta por pagar
-enum PayableStatus {
-  CURRENT     // Al día
-  DUE_SOON    // Por vencer (próximos 7 días)
-  OVERDUE     // Vencida
-  PAID        // Pagada
-  CANCELLED   // Cancelada
-}
-
-/// Estado de orden de compra
-enum PurchaseOrderStatus {
-  DRAFT       // Borrador
-  PENDING     // Pendiente de aprobación
-  APPROVED    // Aprobada
-  ORDERED     // Ordenada al proveedor
-  PARTIAL     // Recibida parcialmente
-  RECEIVED    // Recibida completamente
-  CANCELLED   // Cancelada
-}
-
-/// Estado de auditoría de inventario
-enum AuditStatus {
-  PENDING     // Pendiente de conteo
-  IN_PROGRESS // En proceso
-  COMPLETED   // Completada
-  ADJUSTED    // Ajustes aplicados
-  CANCELLED   // Cancelada
-}
-
-/// Tipo de negocio del tenant
-enum BusinessType {
-  HOTEL
-  RESTAURANT
-  RETAIL
-  HYBRID
-}
-
-/// Rol de usuario
-enum UserRole {
-  OWNER       // Propietario (acceso total)
-  ADMIN       // Administrador
-  MANAGER     // Gerente
-  SUPERVISOR  // Supervisor
-  OPERATOR    // Operador/Cajero
-  AUDITOR     // Auditor (solo lectura + conteos)
-  VIEWER      // Solo lectura
-}
-
-/// Unidad de medida base
-enum BaseUnit {
-  UNIT        // Unidad
-  GRAM        // Gramo
-  KILOGRAM    // Kilogramo
-  LITER       // Litro
-  MILLILITER  // Mililitro
-  METER       // Metro
-  CENTIMETER  // Centímetro
-}
-
-// ============================================================================
-// TENANTS & USERS - Multi-tenancy Core
-// ============================================================================
-
 /// Tenant (Cliente/Empresa)
 /// Cada tenant representa una empresa cliente del SaaS
 model Tenant {
-  id           String       @id @default(uuid()) @db.Uuid
-  name         String       @db.VarChar(255)
-  slug         String       @unique @db.VarChar(100)
-  businessType BusinessType
-  isActive     Boolean      @default(true)
-  
-  // Configuración del tenant (flexible via JSONB)
-  settings     Json?        @db.JsonB  // { currency, timezone, fiscalYear, etc }
-  
-  // Límites del plan
-  maxUsers       Int        @default(5)
-  maxWarehouses  Int        @default(3)
-  maxProducts    Int        @default(1000)
-  
-  createdAt    DateTime     @default(now()) @db.Timestamptz
-  updatedAt    DateTime     @updatedAt @db.Timestamptz
-  
-  // Relaciones
-  users        TenantUser[]
-  warehouses   Warehouse[]
-  categories   Category[]
-  families     ProductFamily[]
-  products     Product[]
-  suppliers    Supplier[]
-  batches      Batch[]
-  movements    InventoryMovement[]
-  audits       InventoryAudit[]
-  purchaseOrders PurchaseOrder[]
+  id              String              @id @default(uuid()) @db.Uuid
+  name            String              @db.VarChar(255)
+  slug            String              @unique @db.VarChar(100)
+  businessType    BusinessType
+  isActive        Boolean             @default(true)
+  settings        Json?
+  maxUsers        Int                 @default(5)
+  maxWarehouses   Int                 @default(3)
+  maxProducts     Int                 @default(1000)
+  createdAt       DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime            @updatedAt @db.Timestamptz(6)
   accountsPayable AccountPayable[]
-  
+  batches         Batch[]
+  categories      Category[]
+  audits          InventoryAudit[]
+  movements       InventoryMovement[]
+  families        ProductFamily[]
+  products        Product[]
+  purchaseOrders  PurchaseOrder[]
+  suppliers       Supplier[]
+  users           TenantUser[]
+  warehouses      Warehouse[]
+
   @@index([slug])
   @@index([isActive])
   @@map("tenants")
@@ -143,13 +46,11 @@ model TenantUser {
   userId    String   @db.Uuid
   role      UserRole @default(OPERATOR)
   isActive  Boolean  @default(true)
-  
-  createdAt DateTime @default(now()) @db.Timestamptz
-  updatedAt DateTime @updatedAt @db.Timestamptz
-  
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
   @@unique([tenantId, userId])
   @@index([tenantId])
   @@index([userId])
@@ -158,87 +59,66 @@ model TenantUser {
 
 /// Usuario del sistema
 model User {
-  id           String   @id @default(uuid()) @db.Uuid
-  email        String   @unique @db.VarChar(255)
-  passwordHash String   @db.VarChar(255)
-  firstName    String   @db.VarChar(100)
-  lastName     String   @db.VarChar(100)
-  avatarUrl    String?  @db.VarChar(500)
-  isActive     Boolean  @default(true)
-  
-  // Metadata de seguridad
-  lastLoginAt  DateTime? @db.Timestamptz
-  failedLogins Int       @default(0)
-  lockedUntil  DateTime? @db.Timestamptz
-  
-  createdAt    DateTime  @default(now()) @db.Timestamptz
-  updatedAt    DateTime  @updatedAt @db.Timestamptz
-  
-  // Relaciones
+  id           String              @id @default(uuid()) @db.Uuid
+  email        String              @unique @db.VarChar(255)
+  passwordHash String              @db.VarChar(255)
+  firstName    String              @db.VarChar(100)
+  lastName     String              @db.VarChar(100)
+  avatarUrl    String?             @db.VarChar(500)
+  isActive     Boolean             @default(true)
+  lastLoginAt  DateTime?           @db.Timestamptz(6)
+  failedLogins Int                 @default(0)
+  lockedUntil  DateTime?           @db.Timestamptz(6)
+  createdAt    DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime            @updatedAt @db.Timestamptz(6)
+  auditsClosed InventoryAudit[]    @relation("AuditClosedBy")
+  movements    InventoryMovement[]
   tenants      TenantUser[]
-  movements    InventoryMovement[]  // Movimientos realizados
-  auditsClosed InventoryAudit[]     @relation("AuditClosedBy")
-  
+
   @@index([email])
   @@map("users")
 }
 
-// ============================================================================
-// WAREHOUSES & LOCATIONS
-// ============================================================================
-
 /// Bodega/Almacén
 model Warehouse {
-  id        String  @id @default(uuid()) @db.Uuid
-  tenantId  String  @db.Uuid
-  name      String  @db.VarChar(255)
-  code      String  @db.VarChar(50)
-  address   String? @db.VarChar(500)
-  isDefault Boolean @default(false)
-  isActive  Boolean @default(true)
-  
-  // Configuración específica
-  settings  Json?   @db.JsonB  // { allowNegativeStock, notificationEmails, etc }
-  
-  createdAt DateTime @default(now()) @db.Timestamptz
-  updatedAt DateTime @updatedAt @db.Timestamptz
-  
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  
-  // Relaciones
+  id            String              @id @default(uuid()) @db.Uuid
+  tenantId      String              @db.Uuid
+  name          String              @db.VarChar(255)
+  code          String              @db.VarChar(50)
+  address       String?             @db.VarChar(500)
+  isDefault     Boolean             @default(false)
+  isActive      Boolean             @default(true)
+  settings      Json?
+  createdAt     DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime            @updatedAt @db.Timestamptz(6)
   batches       Batch[]
-  movementsFrom InventoryMovement[] @relation("MovementOrigin")
-  movementsTo   InventoryMovement[] @relation("MovementDestination")
   audits        InventoryAudit[]
-  
+  movementsTo   InventoryMovement[] @relation("MovementDestination")
+  movementsFrom InventoryMovement[] @relation("MovementOrigin")
+  tenant        Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, code])
   @@index([tenantId])
   @@index([tenantId, isDefault])
   @@map("warehouses")
 }
 
-// ============================================================================
-// PRODUCTS, CATEGORIES & FAMILIES
-// ============================================================================
-
 /// Categoría de productos
 model Category {
-  id          String  @id @default(uuid()) @db.Uuid
-  tenantId    String  @db.Uuid
-  name        String  @db.VarChar(255)
-  description String? @db.Text
-  parentId    String? @db.Uuid  // Para subcategorías
-  sortOrder   Int     @default(0)
-  isActive    Boolean @default(true)
-  
-  createdAt   DateTime @default(now()) @db.Timestamptz
-  updatedAt   DateTime @updatedAt @db.Timestamptz
-  
-  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  parent      Category? @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  id          String     @id @default(uuid()) @db.Uuid
+  tenantId    String     @db.Uuid
+  name        String     @db.VarChar(255)
+  description String?
+  parentId    String?    @db.Uuid
+  sortOrder   Int        @default(0)
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime   @updatedAt @db.Timestamptz(6)
+  parent      Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
   children    Category[] @relation("CategoryHierarchy")
+  tenant      Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   products    Product[]
-  
+
   @@unique([tenantId, name, parentId])
   @@index([tenantId])
   @@index([parentId])
@@ -246,35 +126,31 @@ model Category {
 }
 
 /// Familia de Productos (Unidad de Conversión)
-/// 
+///
 /// DECISIÓN DE DISEÑO:
 /// Las familias resuelven el problema de conversión de unidades.
 /// Ejemplo: "Cocoa" tiene baseUnit=GRAM. Los productos como
 /// "Bolsa 400g" o "Bolsa 900g" pertenecen a esta familia.
 /// El campo conversionFactor del Product define cuántos gramos
 /// tiene ese producto específico.
-/// 
+///
 /// Esto permite:
 /// 1. Calcular stock total en unidad base
 /// 2. Sugerir órdenes de compra agregando necesidades
 /// 3. Reportes unificados por familia
 model ProductFamily {
-  id           String   @id @default(uuid()) @db.Uuid
-  tenantId     String   @db.Uuid
-  name         String   @db.VarChar(255)
-  description  String?  @db.Text
-  baseUnit     BaseUnit @default(UNIT)
-  
-  // Stock agregado (calculado)
-  targetStockBase Decimal? @db.Decimal(15, 4)  // Stock objetivo en unidad base
-  
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now()) @db.Timestamptz
-  updatedAt    DateTime @updatedAt @db.Timestamptz
-  
-  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  products     Product[]
-  
+  id              String    @id @default(uuid()) @db.Uuid
+  tenantId        String    @db.Uuid
+  name            String    @db.VarChar(255)
+  description     String?
+  baseUnit        BaseUnit  @default(UNIT)
+  targetStockBase Decimal?  @db.Decimal(15, 4)
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @db.Timestamptz(6)
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  products        Product[]
+
   @@unique([tenantId, name])
   @@index([tenantId])
   @@map("product_families")
@@ -282,56 +158,37 @@ model ProductFamily {
 
 /// Producto
 model Product {
-  id              String   @id @default(uuid()) @db.Uuid
-  tenantId        String   @db.Uuid
-  sku             String   @db.VarChar(100)
-  barcode         String?  @db.VarChar(100)
-  name            String   @db.VarChar(255)
-  description     String?  @db.Text
-  
-  // Categorización
-  categoryId      String   @db.Uuid
-  familyId        String?  @db.Uuid  // Opcional: para productos con conversión
-  
-  // Factor de conversión a unidad base de la familia
-  // Si familyId está definido, este campo indica cuántas unidades base
-  // contiene este producto. Ej: "Bolsa 400g" -> conversionFactor = 400
-  conversionFactor Decimal? @db.Decimal(15, 4)
-  
-  // Niveles de stock (triggers para alertas proactivas)
-  stockMin        Decimal  @default(0) @db.Decimal(15, 4)
-  stockIdeal      Decimal? @db.Decimal(15, 4)  // Nivel óptimo
-  stockMax        Decimal? @db.Decimal(15, 4)  // Capacidad máxima
-  
-  // Precios (Decimal para precisión financiera)
-  costAverage     Decimal  @default(0) @db.Decimal(15, 4)  // Costo promedio
-  priceDefault    Decimal? @db.Decimal(15, 4)  // Precio de venta default
-  
-  // Flags especiales
-  isService       Boolean  @default(false)  // No maneja stock
-  hasExpiry       Boolean  @default(false)  // Maneja vencimiento
-  trackBatches    Boolean  @default(true)   // Rastreo por lotes
-  
-  // Proveedor preferido
-  preferredSupplierId String? @db.Uuid
-  
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now()) @db.Timestamptz
-  updatedAt       DateTime @updatedAt @db.Timestamptz
-  
-  // Metadata extra (flexible)
-  metadata        Json?    @db.JsonB  // { brand, size, color, customFields }
-  
-  tenant          Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  category        Category       @relation(fields: [categoryId], references: [id])
-  family          ProductFamily? @relation(fields: [familyId], references: [id])
-  preferredSupplier Supplier?    @relation(fields: [preferredSupplierId], references: [id])
-  
-  batches         Batch[]
-  movements       InventoryMovement[]
-  auditItems      InventoryAuditItem[]
-  orderItems      PurchaseOrderItem[]
-  
+  id                  String               @id @default(uuid()) @db.Uuid
+  tenantId            String               @db.Uuid
+  sku                 String               @db.VarChar(100)
+  barcode             String?              @db.VarChar(100)
+  name                String               @db.VarChar(255)
+  description         String?
+  categoryId          String               @db.Uuid
+  familyId            String?              @db.Uuid
+  conversionFactor    Decimal?             @db.Decimal(15, 4)
+  stockMin            Decimal              @default(0) @db.Decimal(15, 4)
+  stockIdeal          Decimal?             @db.Decimal(15, 4)
+  stockMax            Decimal?             @db.Decimal(15, 4)
+  costAverage         Decimal              @default(0) @db.Decimal(15, 4)
+  priceDefault        Decimal?             @db.Decimal(15, 4)
+  isService           Boolean              @default(false)
+  hasExpiry           Boolean              @default(false)
+  trackBatches        Boolean              @default(true)
+  preferredSupplierId String?              @db.Uuid
+  isActive            Boolean              @default(true)
+  createdAt           DateTime             @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime             @updatedAt @db.Timestamptz(6)
+  metadata            Json?
+  batches             Batch[]
+  auditItems          InventoryAuditItem[]
+  movements           InventoryMovement[]
+  category            Category             @relation(fields: [categoryId], references: [id])
+  family              ProductFamily?       @relation(fields: [familyId], references: [id])
+  preferredSupplier   Supplier?            @relation(fields: [preferredSupplierId], references: [id])
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  orderItems          PurchaseOrderItem[]
+
   @@unique([tenantId, sku])
   @@index([tenantId])
   @@index([tenantId, categoryId])
@@ -341,105 +198,73 @@ model Product {
   @@map("products")
 }
 
-// ============================================================================
-// SUPPLIERS
-// ============================================================================
-
 /// Proveedor
 model Supplier {
-  id          String  @id @default(uuid()) @db.Uuid
-  tenantId    String  @db.Uuid
-  code        String  @db.VarChar(50)
-  name        String  @db.VarChar(255)
-  taxId       String? @db.VarChar(50)   // RUC/NIT/RFC
-  
-  // Contacto
-  contactName  String? @db.VarChar(255)
-  email        String? @db.VarChar(255)
-  phone        String? @db.VarChar(50)
-  address      String? @db.Text
-  
-  // Condiciones comerciales
-  paymentTermDays Int     @default(30)  // Días de crédito
-  currency        String  @default("USD") @db.VarChar(3)
-  
-  // Rating/Evaluación
-  rating       Decimal? @db.Decimal(3, 2)  // 0.00 - 5.00
-  
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now()) @db.Timestamptz
-  updatedAt    DateTime @updatedAt @db.Timestamptz
-  
-  metadata     Json?    @db.JsonB
-  
-  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  
-  products     Product[]
-  batches      Batch[]
-  purchaseOrders PurchaseOrder[]
-  payables     AccountPayable[]
-  
+  id              String           @id @default(uuid()) @db.Uuid
+  tenantId        String           @db.Uuid
+  code            String           @db.VarChar(50)
+  name            String           @db.VarChar(255)
+  taxId           String?          @db.VarChar(50)
+  contactName     String?          @db.VarChar(255)
+  email           String?          @db.VarChar(255)
+  phone           String?          @db.VarChar(50)
+  address         String?
+  paymentTermDays Int              @default(30)
+  currency        String           @default("USD") @db.VarChar(3)
+  rating          Decimal?         @db.Decimal(3, 2)
+  isActive        Boolean          @default(true)
+  createdAt       DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime         @updatedAt @db.Timestamptz(6)
+  metadata        Json?
+  payables        AccountPayable[]
+  batches         Batch[]
+  products        Product[]
+  purchaseOrders  PurchaseOrder[]
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, code])
   @@index([tenantId])
   @@index([tenantId, name])
   @@map("suppliers")
 }
 
-// ============================================================================
-// BATCHES (LOTES) - Trazabilidad y Costos
-// ============================================================================
-
 /// Lote de producto
-/// 
+///
 /// DECISIÓN DE DISEÑO:
 /// Los lotes NO reemplazan el stock; SON el stock.
 /// Cada ingreso crea un nuevo lote con su propio:
 /// - Costo unitario real (en ese momento)
 /// - Fecha de vencimiento (si aplica)
 /// - Ubicación (bodega)
-/// 
+///
 /// Esto permite:
 /// 1. Valorización FIFO/LIFO/Promedio real
 /// 2. Trazabilidad completa
 /// 3. Gestión de vencimientos (alertas proactivas)
 model Batch {
-  id            String   @id @default(uuid()) @db.Uuid
-  tenantId      String   @db.Uuid
-  productId     String   @db.Uuid
-  warehouseId   String   @db.Uuid
-  supplierId    String?  @db.Uuid
-  
-  // Identificación del lote
-  batchNumber   String   @db.VarChar(100)
-  
-  // Stock del lote
-  quantityInitial Decimal @db.Decimal(15, 4)  // Cantidad inicial
-  quantityCurrent Decimal @db.Decimal(15, 4)  // Cantidad actual
-  
-  // Costo REAL al momento del ingreso (no promedio)
-  unitCost      Decimal  @db.Decimal(15, 4)
-  currency      String   @default("USD") @db.VarChar(3)
-  
-  // Fechas críticas
-  receivedAt    DateTime @db.Timestamptz  // Fecha de ingreso
-  expiresAt     DateTime? @db.Timestamptz  // Fecha vencimiento (si hasExpiry)
-  
-  // Estado
-  isExhausted   Boolean  @default(false)  // Agotado
-  isQuarantined Boolean  @default(false)  // En cuarentena
-  
-  createdAt     DateTime @default(now()) @db.Timestamptz
-  updatedAt     DateTime @updatedAt @db.Timestamptz
-  
-  metadata      Json?    @db.JsonB  // { purchaseOrderId, invoiceNumber, etc }
-  
-  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  product       Product  @relation(fields: [productId], references: [id])
-  warehouse     Warehouse @relation(fields: [warehouseId], references: [id])
-  supplier      Supplier? @relation(fields: [supplierId], references: [id])
-  
-  movements     InventoryMovement[]
-  
+  id              String              @id @default(uuid()) @db.Uuid
+  tenantId        String              @db.Uuid
+  productId       String              @db.Uuid
+  warehouseId     String              @db.Uuid
+  supplierId      String?             @db.Uuid
+  batchNumber     String              @db.VarChar(100)
+  quantityInitial Decimal             @db.Decimal(15, 4)
+  quantityCurrent Decimal             @db.Decimal(15, 4)
+  unitCost        Decimal             @db.Decimal(15, 4)
+  currency        String              @default("USD") @db.VarChar(3)
+  receivedAt      DateTime            @db.Timestamptz(6)
+  expiresAt       DateTime?           @db.Timestamptz(6)
+  isExhausted     Boolean             @default(false)
+  isQuarantined   Boolean             @default(false)
+  createdAt       DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime            @updatedAt @db.Timestamptz(6)
+  metadata        Json?
+  product         Product             @relation(fields: [productId], references: [id])
+  supplier        Supplier?           @relation(fields: [supplierId], references: [id])
+  tenant          Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  warehouse       Warehouse           @relation(fields: [warehouseId], references: [id])
+  movements       InventoryMovement[]
+
   @@unique([tenantId, batchNumber])
   @@index([tenantId])
   @@index([tenantId, productId])
@@ -449,72 +274,46 @@ model Batch {
   @@map("batches")
 }
 
-// ============================================================================
-// INVENTORY MOVEMENTS - Historial Inmutable
-// ============================================================================
-
 /// Movimiento de inventario (Historial inmutable)
-/// 
+///
 /// DECISIÓN DE DISEÑO:
 /// Esta tabla es APPEND-ONLY. Los registros NUNCA se modifican.
 /// Cada movimiento captura:
 /// - Estado ANTES del movimiento
 /// - Estado DESPUÉS del movimiento
 /// - Quién lo hizo y cuándo
-/// 
+///
 /// Soporta múltiples tipos de destino:
 /// - warehouseDestinationId: Para traslados entre bodegas
 /// - destinationType + destinationRef: Para consumos/ventas
 model InventoryMovement {
-  id              String       @id @default(uuid()) @db.Uuid
-  tenantId        String       @db.Uuid
-  
-  // Referencia al producto y lote
-  productId       String       @db.Uuid
-  batchId         String?      @db.Uuid  // Null para productos sin lote
-  
-  // Tipo de movimiento
-  type            MovementType
-  
-  // Cantidades
-  quantity        Decimal      @db.Decimal(15, 4)  // Cantidad del movimiento
-  stockBefore     Decimal      @db.Decimal(15, 4)  // Stock antes
-  stockAfter      Decimal      @db.Decimal(15, 4)  // Stock después
-  
-  // Origen y destino (bodegas)
-  warehouseOriginId      String?  @db.Uuid  // Bodega origen
-  warehouseDestinationId String?  @db.Uuid  // Bodega destino (traslados)
-  
-  // Destino alternativo (consumos, ventas)
-  // Esto permite flexibilidad sin crear FKs a tablas que no existen aún
-  destinationType String?  @db.VarChar(50)  // 'KITCHEN', 'ROOM', 'CUSTOMER', 'INTERNAL'
-  destinationRef  String?  @db.VarChar(255) // ID o referencia del destino
-  
-  // Costos (para valorización)
-  unitCost        Decimal? @db.Decimal(15, 4)
-  totalCost       Decimal? @db.Decimal(15, 4)
-  
-  // Referencia a documentos
-  referenceType   String?  @db.VarChar(50)  // 'PURCHASE_ORDER', 'AUDIT', 'SALE', etc
-  referenceId     String?  @db.Uuid
-  
-  // Responsable
-  performedById   String   @db.Uuid
-  
-  // Notas
-  notes           String?  @db.Text
-  
-  createdAt       DateTime @default(now()) @db.Timestamptz
-  
-  metadata        Json?    @db.JsonB
-  
-  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  product         Product   @relation(fields: [productId], references: [id])
-  batch           Batch?    @relation(fields: [batchId], references: [id])
-  warehouseOrigin Warehouse? @relation("MovementOrigin", fields: [warehouseOriginId], references: [id])
-  warehouseDestination Warehouse? @relation("MovementDestination", fields: [warehouseDestinationId], references: [id])
-  performedBy     User      @relation(fields: [performedById], references: [id])
-  
+  id                     String       @id @default(uuid()) @db.Uuid
+  tenantId               String       @db.Uuid
+  productId              String       @db.Uuid
+  batchId                String?      @db.Uuid
+  type                   MovementType
+  quantity               Decimal      @db.Decimal(15, 4)
+  stockBefore            Decimal      @db.Decimal(15, 4)
+  stockAfter             Decimal      @db.Decimal(15, 4)
+  warehouseOriginId      String?      @db.Uuid
+  warehouseDestinationId String?      @db.Uuid
+  destinationType        String?      @db.VarChar(50)
+  destinationRef         String?      @db.VarChar(255)
+  unitCost               Decimal?     @db.Decimal(15, 4)
+  totalCost              Decimal?     @db.Decimal(15, 4)
+  referenceType          String?      @db.VarChar(50)
+  referenceId            String?      @db.Uuid
+  performedById          String       @db.Uuid
+  notes                  String?
+  createdAt              DateTime     @default(now()) @db.Timestamptz(6)
+  metadata               Json?
+  batch                  Batch?       @relation(fields: [batchId], references: [id])
+  performedBy            User         @relation(fields: [performedById], references: [id])
+  product                Product      @relation(fields: [productId], references: [id])
+  tenant                 Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  warehouseDestination   Warehouse?   @relation("MovementDestination", fields: [warehouseDestinationId], references: [id])
+  warehouseOrigin        Warehouse?   @relation("MovementOrigin", fields: [warehouseOriginId], references: [id])
+
   @@index([tenantId])
   @@index([tenantId, productId])
   @@index([tenantId, type])
@@ -523,44 +322,28 @@ model InventoryMovement {
   @@map("inventory_movements")
 }
 
-// ============================================================================
-// INVENTORY AUDITS - Conteos Ciegos
-// ============================================================================
-
 /// Auditoría de inventario (Conteo ciego)
 model InventoryAudit {
-  id            String      @id @default(uuid()) @db.Uuid
-  tenantId      String      @db.Uuid
-  warehouseId   String      @db.Uuid
-  
-  // Identificación
-  code          String      @db.VarChar(50)
-  name          String      @db.VarChar(255)
-  
-  status        AuditStatus @default(PENDING)
-  
-  // Fechas
-  scheduledAt   DateTime?   @db.Timestamptz
-  startedAt     DateTime?   @db.Timestamptz
-  completedAt   DateTime?   @db.Timestamptz
-  
-  closedById    String?     @db.Uuid
-  
-  // Resumen post-auditoría
-  totalVariance Decimal?    @db.Decimal(15, 4)  // Variación total
-  varianceCost  Decimal?    @db.Decimal(15, 4)  // Costo de la variación
-  
-  notes         String?     @db.Text
-  
-  createdAt     DateTime    @default(now()) @db.Timestamptz
-  updatedAt     DateTime    @updatedAt @db.Timestamptz
-  
-  tenant        Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  warehouse     Warehouse   @relation(fields: [warehouseId], references: [id])
-  closedBy      User?       @relation("AuditClosedBy", fields: [closedById], references: [id])
-  
+  id            String               @id @default(uuid()) @db.Uuid
+  tenantId      String               @db.Uuid
+  warehouseId   String               @db.Uuid
+  code          String               @db.VarChar(50)
+  name          String               @db.VarChar(255)
+  status        AuditStatus          @default(PENDING)
+  scheduledAt   DateTime?            @db.Timestamptz(6)
+  startedAt     DateTime?            @db.Timestamptz(6)
+  completedAt   DateTime?            @db.Timestamptz(6)
+  closedById    String?              @db.Uuid
+  totalVariance Decimal?             @db.Decimal(15, 4)
+  varianceCost  Decimal?             @db.Decimal(15, 4)
+  notes         String?
+  createdAt     DateTime             @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime             @updatedAt @db.Timestamptz(6)
   items         InventoryAuditItem[]
-  
+  closedBy      User?                @relation("AuditClosedBy", fields: [closedById], references: [id])
+  tenant        Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  warehouse     Warehouse            @relation(fields: [warehouseId], references: [id])
+
   @@unique([tenantId, code])
   @@index([tenantId])
   @@index([tenantId, status])
@@ -569,78 +352,51 @@ model InventoryAudit {
 
 /// Ítem de auditoría
 model InventoryAuditItem {
-  id            String   @id @default(uuid()) @db.Uuid
-  auditId       String   @db.Uuid
-  productId     String   @db.Uuid
-  
-  // Conteo
-  systemStock   Decimal  @db.Decimal(15, 4)  // Stock según sistema
-  countedStock  Decimal? @db.Decimal(15, 4)  // Stock contado (null = no contado)
-  
-  // Variación (calculada)
-  variance      Decimal? @db.Decimal(15, 4)  // countedStock - systemStock
-  varianceCost  Decimal? @db.Decimal(15, 4)
-  
-  // Estado
-  isAdjusted    Boolean  @default(false)  // Si ya se aplicó el ajuste
-  adjustmentMovementId String? @db.Uuid   // ID del movimiento de ajuste
-  
-  notes         String?  @db.Text
-  
-  createdAt     DateTime @default(now()) @db.Timestamptz
-  updatedAt     DateTime @updatedAt @db.Timestamptz
-  
-  audit         InventoryAudit @relation(fields: [auditId], references: [id], onDelete: Cascade)
-  product       Product        @relation(fields: [productId], references: [id])
-  
+  id                   String         @id @default(uuid()) @db.Uuid
+  auditId              String         @db.Uuid
+  productId            String         @db.Uuid
+  systemStock          Decimal        @db.Decimal(15, 4)
+  countedStock         Decimal?       @db.Decimal(15, 4)
+  variance             Decimal?       @db.Decimal(15, 4)
+  varianceCost         Decimal?       @db.Decimal(15, 4)
+  isAdjusted           Boolean        @default(false)
+  adjustmentMovementId String?        @db.Uuid
+  notes                String?
+  createdAt            DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime       @updatedAt @db.Timestamptz(6)
+  audit                InventoryAudit @relation(fields: [auditId], references: [id], onDelete: Cascade)
+  product              Product        @relation(fields: [productId], references: [id])
+
   @@unique([auditId, productId])
   @@index([auditId])
   @@map("inventory_audit_items")
 }
 
-// ============================================================================
-// PURCHASE ORDERS - Órdenes de Compra Inteligentes
-// ============================================================================
-
 /// Orden de compra
 model PurchaseOrder {
-  id            String              @id @default(uuid()) @db.Uuid
-  tenantId      String              @db.Uuid
-  supplierId    String              @db.Uuid
-  
-  // Identificación
-  orderNumber   String              @db.VarChar(50)
-  
-  status        PurchaseOrderStatus @default(DRAFT)
-  
-  // Fechas
-  orderedAt     DateTime?           @db.Timestamptz
-  expectedAt    DateTime?           @db.Timestamptz  // Fecha esperada de recepción
-  receivedAt    DateTime?           @db.Timestamptz
-  
-  // Totales
-  subtotal      Decimal             @default(0) @db.Decimal(15, 4)
-  taxAmount     Decimal             @default(0) @db.Decimal(15, 4)
-  discountAmount Decimal            @default(0) @db.Decimal(15, 4)
-  total         Decimal             @default(0) @db.Decimal(15, 4)
-  currency      String              @default("USD") @db.VarChar(3)
-  
-  // Términos
+  id              String              @id @default(uuid()) @db.Uuid
+  tenantId        String              @db.Uuid
+  supplierId      String              @db.Uuid
+  orderNumber     String              @db.VarChar(50)
+  status          PurchaseOrderStatus @default(DRAFT)
+  orderedAt       DateTime?           @db.Timestamptz(6)
+  expectedAt      DateTime?           @db.Timestamptz(6)
+  receivedAt      DateTime?           @db.Timestamptz(6)
+  subtotal        Decimal             @default(0) @db.Decimal(15, 4)
+  taxAmount       Decimal             @default(0) @db.Decimal(15, 4)
+  discountAmount  Decimal             @default(0) @db.Decimal(15, 4)
+  total           Decimal             @default(0) @db.Decimal(15, 4)
+  currency        String              @default("USD") @db.VarChar(3)
   paymentTermDays Int?
-  
-  notes         String?             @db.Text
-  
-  createdAt     DateTime            @default(now()) @db.Timestamptz
-  updatedAt     DateTime            @updatedAt @db.Timestamptz
-  
-  metadata      Json?               @db.JsonB  // { internalReference, tags, etc }
-  
-  tenant        Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  supplier      Supplier            @relation(fields: [supplierId], references: [id])
-  
-  items         PurchaseOrderItem[]
-  payables      AccountPayable[]
-  
+  notes           String?
+  createdAt       DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime            @updatedAt @db.Timestamptz(6)
+  metadata        Json?
+  payables        AccountPayable[]
+  items           PurchaseOrderItem[]
+  supplier        Supplier            @relation(fields: [supplierId], references: [id])
+  tenant          Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, orderNumber])
   @@index([tenantId])
   @@index([tenantId, status])
@@ -650,81 +406,58 @@ model PurchaseOrder {
 
 /// Ítem de orden de compra
 model PurchaseOrderItem {
-  id              String   @id @default(uuid()) @db.Uuid
-  orderId         String   @db.Uuid
-  productId       String   @db.Uuid
-  
-  // Cantidades
-  quantityOrdered Decimal  @db.Decimal(15, 4)
-  quantityReceived Decimal @default(0) @db.Decimal(15, 4)
-  
-  // Precios
-  unitPrice       Decimal  @db.Decimal(15, 4)
-  discount        Decimal  @default(0) @db.Decimal(15, 4)
-  taxRate         Decimal  @default(0) @db.Decimal(5, 4)  // Ej: 0.12 = 12%
-  total           Decimal  @db.Decimal(15, 4)
-  
-  notes           String?  @db.Text
-  
-  createdAt       DateTime @default(now()) @db.Timestamptz
-  updatedAt       DateTime @updatedAt @db.Timestamptz
-  
-  order           PurchaseOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product         Product       @relation(fields: [productId], references: [id])
-  
+  id               String        @id @default(uuid()) @db.Uuid
+  orderId          String        @db.Uuid
+  productId        String        @db.Uuid
+  quantityOrdered  Decimal       @db.Decimal(15, 4)
+  quantityReceived Decimal       @default(0) @db.Decimal(15, 4)
+  unitPrice        Decimal       @db.Decimal(15, 4)
+  discount         Decimal       @default(0) @db.Decimal(15, 4)
+  taxRate          Decimal       @default(0) @db.Decimal(5, 4)
+  total            Decimal       @db.Decimal(15, 4)
+  notes            String?
+  createdAt        DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime      @updatedAt @db.Timestamptz(6)
+  order            PurchaseOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product          Product       @relation(fields: [productId], references: [id])
+
   @@index([orderId])
   @@index([productId])
   @@map("purchase_order_items")
 }
 
-// ============================================================================
-// ACCOUNTS PAYABLE - Cuentas por Pagar (Integración Tesorería)
-// ============================================================================
-
 /// Cuenta por pagar
-/// 
+///
 /// DECISIÓN DE DISEÑO:
 /// Esta tabla se genera AUTOMÁTICAMENTE cuando:
 /// 1. Se recibe mercancía (ingreso con orden de compra)
 /// 2. Se crea una obligación con proveedor
-/// 
+///
 /// El trigger lógico está en la capa de aplicación (no DB trigger)
 /// para mantener la lógica de negocio en el código y facilitar testing.
 model AccountPayable {
-  id              String        @id @default(uuid()) @db.Uuid
-  tenantId        String        @db.Uuid
-  supplierId      String        @db.Uuid
-  purchaseOrderId String?       @db.Uuid
-  
-  // Identificación
-  invoiceNumber   String?       @db.VarChar(100)
-  
-  // Montos
-  totalAmount     Decimal       @db.Decimal(15, 4)
-  paidAmount      Decimal       @default(0) @db.Decimal(15, 4)
-  balanceAmount   Decimal       @db.Decimal(15, 4)  // Calculado: total - paid
-  currency        String        @default("USD") @db.VarChar(3)
-  
-  // Fechas
-  issueDate       DateTime      @db.Timestamptz
-  dueDate         DateTime      @db.Timestamptz
-  paidAt          DateTime?     @db.Timestamptz
-  
-  status          PayableStatus @default(CURRENT)
-  
-  notes           String?       @db.Text
-  
-  createdAt       DateTime      @default(now()) @db.Timestamptz
-  updatedAt       DateTime      @updatedAt @db.Timestamptz
-  
-  metadata        Json?         @db.JsonB  // { paymentMethod, bankReference, etc }
-  
-  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  supplier        Supplier      @relation(fields: [supplierId], references: [id])
-  purchaseOrder   PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
-  
+  id              String          @id @default(uuid()) @db.Uuid
+  tenantId        String          @db.Uuid
+  supplierId      String          @db.Uuid
+  purchaseOrderId String?         @db.Uuid
+  invoiceNumber   String?         @db.VarChar(100)
+  totalAmount     Decimal         @db.Decimal(15, 4)
+  paidAmount      Decimal         @default(0) @db.Decimal(15, 4)
+  balanceAmount   Decimal         @db.Decimal(15, 4)
+  currency        String          @default("USD") @db.VarChar(3)
+  issueDate       DateTime        @db.Timestamptz(6)
+  dueDate         DateTime        @db.Timestamptz(6)
+  paidAt          DateTime?       @db.Timestamptz(6)
+  status          PayableStatus   @default(CURRENT)
+  notes           String?
+  createdAt       DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime        @updatedAt @db.Timestamptz(6)
+  metadata        Json?
+  purchaseOrder   PurchaseOrder?  @relation(fields: [purchaseOrderId], references: [id])
+  supplier        Supplier        @relation(fields: [supplierId], references: [id])
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   payments        PaymentRecord[]
-  
+
   @@index([tenantId])
   @@index([tenantId, status])
   @@index([tenantId, dueDate])
@@ -734,56 +467,38 @@ model AccountPayable {
 
 /// Registro de pago
 model PaymentRecord {
-  id            String   @id @default(uuid()) @db.Uuid
-  payableId     String   @db.Uuid
-  
-  amount        Decimal  @db.Decimal(15, 4)
-  currency      String   @default("USD") @db.VarChar(3)
-  
-  paymentMethod String   @db.VarChar(50)  // CASH, TRANSFER, CHECK, CARD
-  reference     String?  @db.VarChar(255) // Número de transferencia, cheque, etc
-  
-  paidAt        DateTime @db.Timestamptz
-  
-  notes         String?  @db.Text
-  
-  createdAt     DateTime @default(now()) @db.Timestamptz
-  
-  metadata      Json?    @db.JsonB
-  
+  id            String         @id @default(uuid()) @db.Uuid
+  payableId     String         @db.Uuid
+  amount        Decimal        @db.Decimal(15, 4)
+  currency      String         @default("USD") @db.VarChar(3)
+  paymentMethod String         @db.VarChar(50)
+  reference     String?        @db.VarChar(255)
+  paidAt        DateTime       @db.Timestamptz(6)
+  notes         String?
+  createdAt     DateTime       @default(now()) @db.Timestamptz(6)
+  metadata      Json?
   payable       AccountPayable @relation(fields: [payableId], references: [id], onDelete: Cascade)
-  
+
   @@index([payableId])
   @@map("payment_records")
 }
 
-// ============================================================================
-// SUGGESTIONS & ALERTS - Sistema Proactivo
-// ============================================================================
-
 /// Sugerencia de reabastecimiento
 /// Generadas automáticamente basándose en stockMin/stockIdeal/stockMax
 model RestockSuggestion {
-  id              String   @id @default(uuid()) @db.Uuid
-  tenantId        String   @db.Uuid
-  productId       String   @db.Uuid
-  familyId        String?  @db.Uuid  // Si aplica agrupación por familia
-  
-  // Stock actual y objetivo
-  currentStock    Decimal  @db.Decimal(15, 4)
-  targetStock     Decimal  @db.Decimal(15, 4)
-  suggestedQty    Decimal  @db.Decimal(15, 4)  // Cantidad sugerida
-  
-  // Si es familia, agregado en unidad base
-  suggestedQtyBase Decimal? @db.Decimal(15, 4)
-  
-  priority        Int      @default(0)  // 0=normal, 1=urgente, 2=crítico
-  
-  isProcessed     Boolean  @default(false)
-  processedAt     DateTime? @db.Timestamptz
-  
-  createdAt       DateTime @default(now()) @db.Timestamptz
-  
+  id               String    @id @default(uuid()) @db.Uuid
+  tenantId         String    @db.Uuid
+  productId        String    @db.Uuid
+  familyId         String?   @db.Uuid
+  currentStock     Decimal   @db.Decimal(15, 4)
+  targetStock      Decimal   @db.Decimal(15, 4)
+  suggestedQty     Decimal   @db.Decimal(15, 4)
+  suggestedQtyBase Decimal?  @db.Decimal(15, 4)
+  priority         Int       @default(0)
+  isProcessed      Boolean   @default(false)
+  processedAt      DateTime? @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(6)
+
   @@index([tenantId, isProcessed])
   @@index([tenantId, priority])
   @@map("restock_suggestions")
@@ -791,28 +506,90 @@ model RestockSuggestion {
 
 /// Alerta de inventario
 model InventoryAlert {
-  id          String   @id @default(uuid()) @db.Uuid
-  tenantId    String   @db.Uuid
-  
-  alertType   String   @db.VarChar(50)  // LOW_STOCK, EXPIRING_SOON, OVERSTOCK, etc
-  severity    String   @db.VarChar(20)  // INFO, WARNING, CRITICAL
-  
-  title       String   @db.VarChar(255)
-  message     String   @db.Text
-  
-  // Referencia
-  referenceType String?  @db.VarChar(50)
-  referenceId   String?  @db.Uuid
-  
-  isRead      Boolean  @default(false)
-  readAt      DateTime? @db.Timestamptz
-  
-  isDismissed Boolean  @default(false)
-  dismissedAt DateTime? @db.Timestamptz
-  
-  createdAt   DateTime @default(now()) @db.Timestamptz
-  
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+  alertType     String    @db.VarChar(50)
+  severity      String    @db.VarChar(20)
+  title         String    @db.VarChar(255)
+  message       String
+  referenceType String?   @db.VarChar(50)
+  referenceId   String?   @db.Uuid
+  isRead        Boolean   @default(false)
+  readAt        DateTime? @db.Timestamptz(6)
+  isDismissed   Boolean   @default(false)
+  dismissedAt   DateTime? @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6)
+
   @@index([tenantId, isRead])
   @@index([tenantId, alertType])
   @@map("inventory_alerts")
+}
+
+/// Tipo de movimiento de inventario
+enum MovementType {
+  IN
+  OUT
+  TRANSFER
+  AUDIT
+  SALE
+  CONSUME
+}
+
+/// Estado de cuenta por pagar
+enum PayableStatus {
+  CURRENT
+  DUE_SOON
+  OVERDUE
+  PAID
+  CANCELLED
+}
+
+/// Estado de orden de compra
+enum PurchaseOrderStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  ORDERED
+  PARTIAL
+  RECEIVED
+  CANCELLED
+}
+
+/// Estado de auditoría de inventario
+enum AuditStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  ADJUSTED
+  CANCELLED
+}
+
+/// Tipo de negocio del tenant
+enum BusinessType {
+  HOTEL
+  RESTAURANT
+  RETAIL
+  HYBRID
+}
+
+/// Rol de usuario
+enum UserRole {
+  OWNER
+  ADMIN
+  MANAGER
+  SUPERVISOR
+  OPERATOR
+  AUDITOR
+  VIEWER
+}
+
+/// Unidad de medida base
+enum BaseUnit {
+  UNIT
+  GRAM
+  KILOGRAM
+  LITER
+  MILLILITER
+  METER
+  CENTIMETER
 }

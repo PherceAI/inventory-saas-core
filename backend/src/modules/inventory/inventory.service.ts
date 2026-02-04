@@ -10,7 +10,7 @@ import {
   CreateOutboundMovementDto,
   OutboundReason,
 } from './dto/index.js';
-import { MovementType } from '@prisma/client';
+import { MovementType, PayableStatus, AccountPayable } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 
 /**
@@ -29,6 +29,11 @@ export interface InboundResult {
     type: MovementType;
     quantity: Decimal;
     stockAfter: Decimal;
+  };
+  payable?: {
+    id: string;
+    totalAmount: Decimal;
+    dueDate: Date;
   };
 }
 
@@ -111,6 +116,18 @@ export class InventoryService {
       }
     }
 
+    // Validate user exists (for performedById relation)
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      this.logger.error(`User not found: ${userId}`);
+      throw new NotFoundException(
+        'Usuario no encontrado. Verifique que su sesión sea válida.',
+      );
+    }
+
     // Generate batch number if not provided
     const batchNumber = dto.batchNumber || this.generateBatchNumber();
 
@@ -131,43 +148,74 @@ export class InventoryService {
     const totalCost = quantity.mul(unitCost);
 
     // Execute transaction: Create Batch + Movement
-    const result = await this.prisma.$transaction(async (tx) => {
-      // Step 1: Create the Batch
-      const batch = await tx.batch.create({
-        data: {
-          tenantId,
-          productId: dto.productId,
-          warehouseId: dto.warehouseId,
-          supplierId: dto.supplierId,
-          batchNumber,
-          quantityInitial: quantity,
-          quantityCurrent: quantity,
-          unitCost,
-          receivedAt: new Date(),
-          expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
-        },
-      });
+    let result;
+    try {
+      result = await this.prisma.$transaction(async (tx) => {
+        // Step 1: Create the Batch
+        const batch = await tx.batch.create({
+          data: {
+            tenantId,
+            productId: dto.productId,
+            warehouseId: dto.warehouseId,
+            supplierId: dto.supplierId,
+            batchNumber,
+            quantityInitial: quantity,
+            quantityCurrent: quantity,
+            unitCost,
+            receivedAt: new Date(),
+            expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
+          },
+        });
 
-      // Step 2: Create the Movement record
-      const movement = await tx.inventoryMovement.create({
-        data: {
-          tenantId,
-          productId: dto.productId,
-          batchId: batch.id,
-          type: MovementType.IN,
-          quantity,
-          stockBefore: new Decimal(0),
-          stockAfter: quantity,
-          warehouseDestinationId: dto.warehouseId,
-          unitCost,
-          totalCost,
-          performedById: userId,
-          notes: dto.notes,
-        },
-      });
+        // Step 2: Create the Movement record
+        const movement = await tx.inventoryMovement.create({
+          data: {
+            tenantId,
+            productId: dto.productId,
+            batchId: batch.id,
+            type: MovementType.IN,
+            quantity,
+            stockBefore: new Decimal(0),
+            stockAfter: quantity,
+            warehouseDestinationId: dto.warehouseId,
+            unitCost,
+            totalCost,
+            performedById: userId,
+            notes: dto.notes,
+          },
+        });
 
-      return { batch, movement };
-    });
+        // Step 3: Create Account Payable (Optional)
+        let payable: AccountPayable | null = null;
+        if (dto.createPayable && dto.supplierId) {
+          const dueDate = new Date();
+          dueDate.setDate(dueDate.getDate() + (dto.paymentTermDays || 30));
+
+          payable = await tx.accountPayable.create({
+            data: {
+              tenantId,
+              supplierId: dto.supplierId,
+              invoiceNumber: dto.invoiceNumber,
+              totalAmount: totalCost,
+              balanceAmount: totalCost, // Full amount pending
+              issueDate: new Date(),
+              dueDate,
+              status: PayableStatus.CURRENT,
+              notes: dto.notes
+                ? `Generado desde ingreso: ${dto.notes}`
+                : 'Generado desde ingreso manual',
+            },
+          });
+        }
+
+        return { batch, movement, payable };
+      });
+    } catch (error) {
+      this.logger.error(`Transaction failed during inbound registration: ${error.message}`);
+      this.logger.error(`DTO received: ${JSON.stringify(dto)}`);
+      this.logger.error(`TenantId: ${tenantId}, UserId: ${userId}`);
+      throw error;
+    }
 
     this.logger.log(
       `Inbound registered: Batch ${result.batch.batchNumber} with ${quantity} units`,
@@ -187,6 +235,13 @@ export class InventoryService {
         quantity: result.movement.quantity,
         stockAfter: result.movement.stockAfter,
       },
+      payable: result.payable
+        ? {
+          id: result.payable.id,
+          totalAmount: result.payable.totalAmount,
+          dueDate: result.payable.dueDate,
+        }
+        : undefined,
     };
   }
 

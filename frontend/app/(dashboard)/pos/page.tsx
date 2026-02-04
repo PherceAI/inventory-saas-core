@@ -66,7 +66,7 @@ export default function PosPage() {
                     return {
                         id: p.id,
                         name: p.name,
-                        price: p.priceDefault || p.costAverage || 0,
+                        price: Number(p.priceDefault) || Number(p.costAverage) || 0,
                         category: p.category?.name || 'Sin categoría',
                         image: getProductEmoji(p.category?.name || ''),
                         stock: stockLevel
@@ -221,37 +221,44 @@ export default function PosPage() {
             <div className="flex-1 flex flex-col border-r border-slate-200 h-full overflow-hidden">
 
                 {/* 1. Top Bar: Search & Categories */}
-                <div className="bg-white p-4 border-b border-slate-100 flex-shrink-0 space-y-4">
+                <div className="bg-white p-6 border-b border-slate-100 flex-shrink-0 space-y-6">
                     <div className="flex gap-4">
-                        <div className="relative flex-1">
-                            <Search className="absolute left-3 top-2.5 h-5 w-5 text-slate-400" />
-                            <Input
+                        <div className="relative flex-1 group">
+                            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                <Search className="h-5 w-5 text-slate-400 group-focus-within:text-blue-600 transition-colors" />
+                            </div>
+                            <input
                                 ref={scanInputRef}
-                                className="pl-10 h-10 w-full bg-slate-50 border-slate-200 focus-visible:ring-emerald-500"
-                                placeholder="Buscar producto o escanear código..."
+                                className="block w-full rounded-2xl border-0 py-4 pl-12 pr-4 text-slate-900 shadow-[0_2px_10px_-3px_rgba(59,130,246,0.1)] ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6 transition-shadow bg-slate-50/50 focus:bg-white"
+                                placeholder="Buscar por nombre, SKU o escanear código..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 autoFocus
                             />
+                            <div className="absolute inset-y-0 right-2 flex items-center">
+                                <kbd className="hidden sm:inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-2 h-7 font-mono text-[10px] font-medium text-slate-500">
+                                    <span className="text-xs">⌘</span>K
+                                </kbd>
+                            </div>
                         </div>
-                        <Button variant="outline" className="h-10 w-10 p-0 text-slate-500">
-                            <ScanBarcode className="h-5 w-5" />
+                        <Button variant="outline" className="h-14 w-14 rounded-2xl border-slate-200 p-0 text-slate-500 hover:border-blue-200 hover:text-blue-600 hover:bg-blue-50 shadow-sm">
+                            <ScanBarcode className="h-6 w-6" />
                         </Button>
                     </div>
 
-                    <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                    <div className="flex gap-2 overflow-x-auto pb-4 pt-1 px-1 scrollbar-hide">
                         {categories.map(cat => (
                             <button
                                 key={cat}
                                 onClick={() => setSelectedCategory(cat)}
                                 className={cn(
-                                    "px-4 py-1.5 rounded-full text-sm font-medium transition-all whitespace-nowrap",
+                                    "px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap border",
                                     selectedCategory === cat
-                                        ? "bg-slate-900 text-white shadow-md shadow-slate-900/10"
-                                        : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+                                        ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+                                        : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300"
                                 )}
                             >
-                                {cat === 'All' ? 'Todos' : cat}
+                                {cat === 'All' ? 'Todo' : cat}
                             </button>
                         ))}
                     </div>
@@ -264,17 +271,22 @@ export default function PosPage() {
                             <button
                                 key={product.id}
                                 onClick={() => addToCart(product)}
-                                className="group bg-white p-4 rounded-xl border border-slate-100 shadow-sm hover:shadow-md hover:border-emerald-200 transition-all text-left flex flex-col h-48 active:scale-[0.98]"
+                                className="group relative bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:border-blue-300 transition-all text-left flex flex-col h-52 active:bg-slate-50"
                             >
-                                <div className="flex-1 flex items-center justify-center text-4xl mb-2 group-hover:scale-110 transition-transform duration-300">
+                                <div className="absolute top-3 right-3 text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">
+                                    Stock: {product.stock}
+                                </div>
+                                <div className="flex-1 flex items-center justify-center text-5xl mb-2">
                                     {product.image}
                                 </div>
                                 <div>
-                                    <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">{product.category}</div>
-                                    <div className="font-bold text-slate-800 line-clamp-2 leading-tight mb-1">{product.name}</div>
-                                    <div className="flex justify-between items-center mt-2">
-                                        <span className="text-emerald-600 font-bold">${product.price.toFixed(2)}</span>
-                                        <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">Stock: {product.stock}</span>
+                                    <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">{product.category}</div>
+                                    <div className="font-semibold text-slate-800 line-clamp-2 leading-tight mb-2 text-sm">{product.name}</div>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-base font-bold text-slate-900">${Number(product.price).toFixed(2)}</span>
+                                        <div className="h-7 w-7 rounded-md bg-blue-50 flex items-center justify-center text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                                            <Plus className="h-4 w-4" />
+                                        </div>
                                     </div>
                                 </div>
                             </button>
@@ -325,10 +337,10 @@ export default function PosPage() {
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <div className="font-medium text-slate-900 text-sm truncate">{item.product.name}</div>
-                                    <div className="text-xs text-slate-500">${item.product.price.toFixed(2)} x {item.quantity}</div>
+                                    <div className="text-xs text-slate-500">${Number(item.product.price).toFixed(2)} x {item.quantity}</div>
                                 </div>
                                 <div className="font-bold text-slate-800 text-sm">
-                                    ${(item.product.price * item.quantity).toFixed(2)}
+                                    ${(Number(item.product.price) * item.quantity).toFixed(2)}
                                 </div>
 
                                 {/* Hover Actions */}
@@ -358,37 +370,36 @@ export default function PosPage() {
                 </div>
 
                 {/* 3. Calculations & Payment Section */}
-                <div className="bg-slate-50/50 p-6 border-t border-slate-200">
+                <div className="bg-white p-6 border-t border-slate-100 shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.05)] z-20">
                     <div className="space-y-3 mb-6">
                         <div className="flex justify-between text-sm">
-                            <span className="text-slate-500">Subtotal</span>
-                            <span className="font-medium text-slate-900">${subtotal.toFixed(2)}</span>
+                            <span className="text-slate-500 font-medium">Subtotal</span>
+                            <span className="font-bold text-slate-700">${subtotal.toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between text-sm">
-                            <span className="text-slate-500">IVA (16%)</span>
-                            <span className="font-medium text-slate-900">${tax.toFixed(2)}</span>
+                            <span className="text-slate-500 font-medium">IVA (16%)</span>
+                            <span className="font-bold text-slate-700">${tax.toFixed(2)}</span>
                         </div>
-                        <div className="flex justify-between text-sm text-amber-600 font-medium">
-                            <span className="flex items-center gap-1"><Percent className="h-3 w-3" /> Descuento</span>
+                        <div className="flex justify-between text-sm text-blue-600 font-medium bg-blue-50 p-2 rounded-lg border border-blue-100">
+                            <span className="flex items-center gap-1.5"><Percent className="h-3.5 w-3.5" /> Descuento aplicado</span>
                             <span>-$0.00</span>
                         </div>
-                        <Separator className="bg-slate-200 my-2" />
+                        <Separator className="bg-slate-100 my-4" />
                         <div className="flex justify-between items-end">
-                            <span className="text-lg font-bold text-slate-700">Total</span>
-                            <span className="text-3xl font-bold text-slate-900 tracking-tight">${total.toFixed(2)}</span>
+                            <div className="flex flex-col">
+                                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total a pagar</span>
+                                <span className="text-3xl font-black text-slate-900 tracking-tight mt-0.5">${total.toFixed(2)}</span>
+                            </div>
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
-                        <Button variant="outline" className="h-12 border-slate-200 text-slate-600 hover:text-red-600 hover:border-red-200 hover:bg-red-50" onClick={clearCart}>
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Cancelar
+                    <div className="grid grid-cols-4 gap-3">
+                        <Button variant="outline" className="h-14 col-span-1 rounded-xl border-slate-200 text-slate-500 hover:text-red-600 hover:border-red-200 hover:bg-red-50 transition-colors" onClick={clearCart}>
+                            <Trash2 className="h-5 w-5" />
                         </Button>
-                        <Button className="h-12 bg-slate-900 hover:bg-slate-800 text-white shadow-sm">
-                            Guardar Ticket
-                        </Button>
-                        <Button className="col-span-2 h-14 bg-emerald-500 hover:bg-emerald-600 text-white text-lg font-bold shadow-sm active:scale-[0.99] transition-all">
-                            Cobrar ${total.toFixed(2)}
+                        <Button className="h-14 col-span-3 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-lg shadow-blue-600/25 active:scale-[0.98] transition-all flex flex-col items-center justify-center gap-0.5">
+                            <span className="text-xs font-medium text-blue-100 tracking-wide uppercase">Confirmar Cobro</span>
+                            <span className="text-lg font-bold">Pagar ${total.toFixed(2)}</span>
                         </Button>
                     </div>
                 </div>

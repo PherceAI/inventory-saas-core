@@ -80,9 +80,9 @@ export class AuditsController {
     @ApiResponse({ status: 200, description: 'Auditoría cerrada y ajustes generados' })
     async close(
         @ActiveTenant() tenant: ActiveTenantData,
-        @CurrentUser() user: { id: string },
+        @CurrentUser() user: { userId: string },
         @Param('id') auditId: string,
     ) {
-        return this.auditsService.close(tenant.tenantId, auditId, user.id);
+        return this.auditsService.close(tenant.tenantId, auditId, user.userId);
     }
 }

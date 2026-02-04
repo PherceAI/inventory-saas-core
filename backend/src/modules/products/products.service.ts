@@ -37,7 +37,8 @@ export class ProductsService {
       limit = 20,
       search,
       familyId,
-      isActive,
+      isActive = true, // Default to active only
+      includeInactive = false,
       sortBy = 'name',
       sortOrder = 'asc',
     } = query;
@@ -46,7 +47,7 @@ export class ProductsService {
     // Build where clause - ALWAYS include tenantId
     const where: Prisma.ProductWhereInput = {
       tenantId, // MANDATORY: Security filter
-      ...(isActive !== undefined && { isActive }),
+      ...(!includeInactive && { isActive }),
       ...(familyId && { familyId }),
       ...(search && {
         OR: [
@@ -84,12 +85,25 @@ export class ProductsService {
       this.prisma.product.count({ where }),
     ]);
 
+    // Calculate aggregated stock from batches
+    const productsWithStock = products.map((product) => {
+      const currentStock = product.batches.reduce(
+        (acc, batch) => acc.add(batch.quantityCurrent),
+        new Prisma.Decimal(0),
+      );
+
+      return {
+        ...product,
+        currentStock,
+      };
+    });
+
     this.logger.debug(
       `Found ${products.length} products for tenant ${tenantId}`,
     );
 
     return {
-      data: products,
+      data: productsWithStock,
       meta: {
         total,
         page,

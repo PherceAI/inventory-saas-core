@@ -18,7 +18,8 @@ import {
     ChevronDown,
     Crown,
     Shield,
-    User
+    User,
+    Landmark
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth"
@@ -30,6 +31,7 @@ const navigation = [
     { name: "Inventario", href: "/inventory", icon: Package },
     { name: "Proveedores", href: "/suppliers", icon: Users },
     { name: "Pedidos", href: "/orders", icon: ShoppingCart },
+    { name: "Tesorería", href: "/treasury", icon: Landmark },
     { name: "Flota", href: "/fleet", icon: Truck },
     { name: "Reportes", href: "/reports", icon: BarChart3 },
     { name: "Configuración", href: "/settings", icon: Settings },

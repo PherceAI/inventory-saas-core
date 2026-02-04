@@ -7,7 +7,8 @@ import {
     Building2,
     Bell,
     ShieldCheck,
-    ChevronRight
+    ChevronRight,
+    Tag
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 
@@ -25,6 +26,13 @@ const settingsModules = [
         icon: Building2,
         href: "/settings/company", // Placeholder pending implementation
         color: "text-purple-600 bg-purple-50"
+    },
+    {
+        title: "Categorías de Productos",
+        description: "Gestiona la jerarquía y organización de tus productos.",
+        icon: Tag,
+        href: "/settings/categories",
+        color: "text-pink-600 bg-pink-50"
     },
     {
         title: "Reglas de Inventario",

@@ -1,9 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import {
-    Plus,
     Box,
     AlertTriangle,
     DollarSign,
@@ -16,18 +15,28 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ProductsService } from "@/services/products.service"
+import { CategoriesService, Category } from "@/services/categories.service"
 import { Card, CardContent } from "@/components/ui/card"
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue
+} from "@/components/ui/select"
 
 export default function NewProductPage() {
     const router = useRouter()
     const [isLoading, setIsLoading] = useState(false)
+    const [categories, setCategories] = useState<Category[]>([])
+    const [loadingCategories, setLoadingCategories] = useState(true)
 
     // Form States
     const [formData, setFormData] = useState({
         name: "",
         sku: "",
         description: "",
-        categoryId: "c1", // Mock default
+        categoryId: "",
         familyId: "",
         barcode: "",
         stockMin: 0,
@@ -41,28 +50,64 @@ export default function NewProductPage() {
     const [hasExpiry, setHasExpiry] = useState(false)
     const [trackBatches, setTrackBatches] = useState(true)
 
+    // Fetch categories on mount
+    useEffect(() => {
+        const fetchCategories = async () => {
+            try {
+                const data = await CategoriesService.getAll()
+                setCategories(data)
+                // Set first category as default if available
+                if (data.length > 0) {
+                    setFormData(prev => ({ ...prev, categoryId: data[0].id }))
+                }
+            } catch (error) {
+                console.error("Error fetching categories:", error)
+            } finally {
+                setLoadingCategories(false)
+            }
+        }
+        fetchCategories()
+    }, [])
+
     const handleChange = (field: string, value: any) => {
         setFormData(prev => ({ ...prev, [field]: value }))
     }
 
     const handleSubmit = async () => {
-        // Basic Validation
+        // Validation
         if (!formData.name || !formData.sku) {
             alert("Por favor completa Nombre y SKU")
+            return
+        }
+
+        if (!formData.categoryId) {
+            alert("Por favor selecciona una categoría")
             return
         }
 
         try {
             setIsLoading(true)
 
-            await ProductsService.create({
-                ...formData,
-                categoryId: "550e8400-e29b-41d4-a716-446655440000", // Placeholder valid UUID
+            // Clean up empty fields - backend expects undefined, not empty strings
+            const cleanedData = {
+                name: formData.name,
+                sku: formData.sku,
+                categoryId: formData.categoryId,
+                ...(formData.description && { description: formData.description }),
+                ...(formData.familyId && { familyId: formData.familyId }),
+                ...(formData.barcode && { barcode: formData.barcode }),
+                ...(formData.stockMin > 0 && { stockMin: formData.stockMin }),
+                ...(formData.stockIdeal > 0 && { stockIdeal: formData.stockIdeal }),
+                ...(formData.stockMax > 0 && { stockMax: formData.stockMax }),
+                ...(formData.costAverage > 0 && { costAverage: formData.costAverage }),
+                ...(formData.priceDefault > 0 && { priceDefault: formData.priceDefault }),
                 isService,
                 hasExpiry,
                 trackBatches,
                 isActive: true
-            } as any)
+            }
+
+            await ProductsService.create(cleanedData)
 
             // Success feedback
             alert("Producto creado exitosamente")
@@ -95,7 +140,7 @@ export default function NewProductPage() {
             </div>
 
             {/* Main Content Card */}
-            <Card className="flex-1 border-none shadow-sm overflow-hidden bg-white">
+            <Card className="flex-1 border-none shadow-sm overflow-hidden bg-white rounded-xl">
                 <CardContent className="p-0 h-full flex flex-col">
 
                     {/* Scrollable Form Body */}
@@ -105,30 +150,49 @@ export default function NewProductPage() {
                             {/* Section: Identidad */}
                             <section className="space-y-6">
                                 <div className="flex items-center gap-3 pb-4 border-b border-slate-100">
-                                    <div className="p-2 bg-slate-100 rounded-lg">
-                                        <Box className="w-5 h-5 text-slate-600" />
+                                    <div className="p-2 bg-primary/10 rounded-lg">
+                                        <Box className="w-5 h-5 text-primary" />
                                     </div>
                                     <h3 className="text-base font-bold text-slate-800">Identidad Básica</h3>
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-                                    <div className="md:col-span-8 space-y-2">
+                                    <div className="md:col-span-6 space-y-2">
                                         <Label className="text-xs font-semibold text-slate-500">Nombre del Producto <span className="text-red-500">*</span></Label>
                                         <Input
                                             placeholder="Ej: Harina de Trigo Premium"
-                                            className="h-11 bg-white border-slate-200 focus:border-indigo-500 transition-colors"
+                                            className="h-11 bg-white border-slate-200 focus:border-primary transition-colors"
                                             value={formData.name}
                                             onChange={e => handleChange('name', e.target.value)}
                                         />
                                     </div>
-                                    <div className="md:col-span-4 space-y-2">
+                                    <div className="md:col-span-3 space-y-2">
                                         <Label className="text-xs font-semibold text-slate-500">SKU (Único) <span className="text-red-500">*</span></Label>
                                         <Input
                                             placeholder="Ej: ING-004-A"
-                                            className="h-11 bg-white border-slate-200 font-mono focus:border-indigo-500 transition-colors"
+                                            className="h-11 bg-white border-slate-200 font-mono focus:border-primary transition-colors"
                                             value={formData.sku}
                                             onChange={e => handleChange('sku', e.target.value)}
                                         />
+                                    </div>
+                                    <div className="md:col-span-3 space-y-2">
+                                        <Label className="text-xs font-semibold text-slate-500">Categoría <span className="text-red-500">*</span></Label>
+                                        <Select
+                                            value={formData.categoryId}
+                                            onValueChange={(value) => handleChange('categoryId', value)}
+                                            disabled={loadingCategories}
+                                        >
+                                            <SelectTrigger className="h-11 bg-white border-slate-200">
+                                                <SelectValue placeholder={loadingCategories ? "Cargando..." : "Seleccionar"} />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {categories.map((cat) => (
+                                                    <SelectItem key={cat.id} value={cat.id}>
+                                                        {cat.name}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
                                     </div>
                                 </div>
 
@@ -137,7 +201,7 @@ export default function NewProductPage() {
                                         <Label className="text-xs font-semibold text-slate-500">Descripción</Label>
                                         <textarea
                                             placeholder="Detalles técnicos, presentación, uso..."
-                                            className="flex min-h-[100px] w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-none transition-all"
+                                            className="flex min-h-[100px] w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-none transition-all"
                                             value={formData.description}
                                             onChange={e => handleChange('description', e.target.value)}
                                         />
@@ -162,16 +226,16 @@ export default function NewProductPage() {
                                                 type="number"
                                                 className="h-10 text-center bg-red-50/30 border-red-100 focus:border-red-300 focus-visible:ring-red-200 font-medium text-red-700"
                                                 value={formData.stockMin}
-                                                onChange={e => handleChange('stockMin', parseFloat(e.target.value))}
+                                                onChange={e => handleChange('stockMin', parseFloat(e.target.value) || 0)}
                                             />
                                         </div>
                                         <div className="space-y-2">
-                                            <Label className="text-[10px] font-bold text-blue-500 uppercase">Ideal</Label>
+                                            <Label className="text-[10px] font-bold text-primary uppercase">Ideal</Label>
                                             <Input
                                                 type="number"
-                                                className="h-10 text-center bg-blue-50/30 border-blue-100 focus:border-blue-300 focus-visible:ring-blue-200 font-medium text-blue-700"
+                                                className="h-10 text-center bg-primary/5 border-primary/20 focus:border-primary/50 focus-visible:ring-primary/20 font-medium text-primary"
                                                 value={formData.stockIdeal}
-                                                onChange={e => handleChange('stockIdeal', parseFloat(e.target.value))}
+                                                onChange={e => handleChange('stockIdeal', parseFloat(e.target.value) || 0)}
                                             />
                                         </div>
                                         <div className="space-y-2">
@@ -180,7 +244,7 @@ export default function NewProductPage() {
                                                 type="number"
                                                 className="h-10 text-center bg-white border-slate-200 focus:border-slate-400"
                                                 value={formData.stockMax}
-                                                onChange={e => handleChange('stockMax', parseFloat(e.target.value))}
+                                                onChange={e => handleChange('stockMax', parseFloat(e.target.value) || 0)}
                                             />
                                         </div>
                                     </div>
@@ -204,7 +268,7 @@ export default function NewProductPage() {
                                                     type="number"
                                                     className="pl-7 h-10 bg-white border-slate-200 font-medium text-slate-700"
                                                     value={formData.costAverage}
-                                                    onChange={e => handleChange('costAverage', parseFloat(e.target.value))}
+                                                    onChange={e => handleChange('costAverage', parseFloat(e.target.value) || 0)}
                                                 />
                                             </div>
                                         </div>
@@ -216,7 +280,7 @@ export default function NewProductPage() {
                                                     type="number"
                                                     className="pl-7 h-10 bg-white border-slate-200 font-medium text-slate-700"
                                                     value={formData.priceDefault}
-                                                    onChange={e => handleChange('priceDefault', parseFloat(e.target.value))}
+                                                    onChange={e => handleChange('priceDefault', parseFloat(e.target.value) || 0)}
                                                 />
                                             </div>
                                         </div>
@@ -234,7 +298,7 @@ export default function NewProductPage() {
                         <Button
                             onClick={handleSubmit}
                             disabled={isLoading}
-                            className="h-11 px-8 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-lg shadow-indigo-500/20 transition-all active:scale-95"
+                            className="h-11 px-8 rounded-xl bg-primary hover:bg-primary/90 text-white font-bold shadow-lg shadow-primary/25 transition-all active:scale-95"
                         >
                             {isLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
                             Guardar Producto

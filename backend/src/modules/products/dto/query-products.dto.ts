@@ -63,6 +63,15 @@ export class QueryProductsDto {
   isActive?: boolean = true;
 
   @ApiPropertyOptional({
+    description: 'Include inactive products (admin)',
+    default: false,
+  })
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  includeInactive?: boolean = false;
+
+  @ApiPropertyOptional({
     description: 'Ordenar por campo',
     example: 'name',
     default: 'name',

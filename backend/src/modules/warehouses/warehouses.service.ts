@@ -9,7 +9,7 @@ import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class WarehousesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   async create(tenantId: string, createWarehouseDto: CreateWarehouseDto) {
     try {
@@ -54,9 +54,12 @@ export class WarehousesService {
     }
   }
 
-  async findAll(tenantId: string) {
+  async findAll(tenantId: string, includeInactive = false) {
     return this.prisma.warehouse.findMany({
-      where: { tenantId },
+      where: {
+        tenantId,
+        ...(!includeInactive && { isActive: true }) // Default: active only
+      },
       orderBy: { isDefault: 'desc' }, // Default warehouse first
     });
   }

@@ -126,11 +126,11 @@ export class PurchaseOrdersController {
     @ApiResponse({ status: 400, description: 'La orden no está en estado SENT o PARTIAL' })
     async receiveGoods(
         @ActiveTenant() tenant: ActiveTenantData,
-        @CurrentUser() user: { id: string },
+        @CurrentUser() user: { userId: string },
         @Param('id', ParseUUIDPipe) id: string,
         @Body() dto: ReceiveGoodsDto,
     ) {
-        return this.service.receiveGoods(tenant.tenantId, user.id, id, dto);
+        return this.service.receiveGoods(tenant.tenantId, user.userId, id, dto);
     }
 
     @Post(':id/cancel')

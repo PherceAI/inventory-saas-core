@@ -65,10 +65,16 @@ export class InventoryController {
   @ApiResponse({ status: 404, description: 'Producto o bodega no encontrados' })
   async registerInbound(
     @ActiveTenant() tenant: ActiveTenantData,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { userId: string },
     @Body() dto: CreateInboundMovementDto,
   ): Promise<InboundResult> {
-    return this.inventoryService.registerInbound(tenant.tenantId, user.id, dto);
+    try {
+      return await this.inventoryService.registerInbound(tenant.tenantId, user.userId, dto);
+    } catch (error) {
+      console.error('Inbound Error:', error.message);
+      console.error('Stack:', error.stack);
+      throw error;
+    }
   }
 
   /**
@@ -113,12 +119,12 @@ export class InventoryController {
   @ApiResponse({ status: 404, description: 'Producto o bodega no encontrados' })
   async registerOutbound(
     @ActiveTenant() tenant: ActiveTenantData,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { userId: string },
     @Body() dto: CreateOutboundMovementDto,
   ): Promise<OutboundResult> {
     return this.inventoryService.registerOutbound(
       tenant.tenantId,
-      user.id,
+      user.userId,
       dto,
     );
   }
