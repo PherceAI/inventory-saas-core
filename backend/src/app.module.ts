@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { DatabaseModule } from './common/database/index.js';
 import { HealthModule } from './modules/health/index.js';
 import { AuthModule, JwtAuthGuard } from './modules/auth/index.js';
@@ -16,6 +17,7 @@ import { FamiliesModule } from './modules/families/index.js';
 import { AuditsModule } from './modules/audits/index.js';
 import { DashboardModule } from './modules/dashboard/index.js';
 import { TenantGuard } from './common/guards/index.js';
+import { TenantContextInterceptor } from './common/interceptors/index.js';
 
 @Module({
   imports: [
@@ -24,6 +26,20 @@ import { TenantGuard } from './common/guards/index.js';
       isGlobal: true,
       envFilePath: '../.env',
     }),
+
+    // Rate limiting - protect against brute force and DDoS
+    ThrottlerModule.forRoot([
+      {
+        name: 'short',
+        ttl: 1000, // 1 second
+        limit: 10, // 10 requests per second
+      },
+      {
+        name: 'long',
+        ttl: 60000, // 1 minute
+        limit: 100, // 100 requests per minute
+      },
+    ]),
 
     // Database (Prisma) - Global module
     DatabaseModule,
@@ -47,6 +63,11 @@ import { TenantGuard } from './common/guards/index.js';
   ],
   controllers: [],
   providers: [
+    // Rate limiting guard - apply throttling globally
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
     // Global JWT guard - all routes protected by default
     // Use @Public() decorator to make routes public
     {
@@ -58,6 +79,12 @@ import { TenantGuard } from './common/guards/index.js';
     {
       provide: APP_GUARD,
       useClass: TenantGuard,
+    },
+    // Global RLS Interceptor - sets PostgreSQL session variable for Row-Level Security
+    // Must run AFTER TenantGuard (guards run before interceptors)
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: TenantContextInterceptor,
     },
   ],
 })

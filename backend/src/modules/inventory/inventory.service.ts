@@ -8,9 +8,11 @@ import { PrismaService } from '../../common/database/index.js';
 import {
   CreateInboundMovementDto,
   CreateOutboundMovementDto,
+  CreateTransferDto,
+  QueryMovementsDto,
   OutboundReason,
 } from './dto/index.js';
-import { MovementType, PayableStatus, AccountPayable } from '@prisma/client';
+import { MovementType, PayableStatus, AccountPayable, InventoryMovement, Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 
 /**
@@ -58,6 +60,108 @@ export class InventoryService {
   private readonly logger = new Logger(InventoryService.name);
 
   constructor(private readonly prisma: PrismaService) { }
+
+  /**
+   * Helper: Consume stock from batches using FIFO logic within a transaction
+   */
+  private async consumeFromBatchesFIFO(
+    tx: PrismaService, // Or Prisma.TransactionClient
+    params: {
+      tenantId: string;
+      productId: string;
+      warehouseId: string;
+      quantity: Decimal;
+      userId: string;
+      movementType: MovementType;
+      warehouseDestinationId?: string; // Optional for transfers
+      destinationType?: string; // Optional
+      destinationRef?: string;  // Optional check if type definition allows null
+      referenceType?: string;
+      referenceId?: string;
+      notes?: string;
+    }
+  ) {
+    // 1. Get available batches (FIFO)
+    const availableBatches = await tx.batch.findMany({
+      where: {
+        tenantId: params.tenantId,
+        productId: params.productId,
+        warehouseId: params.warehouseId,
+        quantityCurrent: { gt: 0 },
+        isExhausted: false,
+      },
+      orderBy: [{ receivedAt: 'asc' }, { createdAt: 'asc' }],
+    });
+
+    const totalAvailable = availableBatches.reduce(
+      (sum, batch) => sum.add(batch.quantityCurrent),
+      new Decimal(0),
+    );
+
+    if (totalAvailable.lt(params.quantity)) {
+      throw new BadRequestException(
+        `Stock insuficiente. Disponible: ${totalAvailable}, Solicitado: ${params.quantity}`,
+      );
+    }
+
+    let remaining = params.quantity;
+    const movements: Array<InventoryMovement & {
+      batchNumber: string;
+      batchId: string; // Override to non-nullable
+    }> = [];
+
+    for (const batch of availableBatches) {
+      if (remaining.lte(0)) break;
+
+      const batchCurrent = batch.quantityCurrent;
+      const toConsume = Decimal.min(remaining, batchCurrent);
+      const newQuantity = batchCurrent.sub(toConsume);
+      const isExhausted = newQuantity.lte(0);
+
+      // Update batch
+      await tx.batch.update({
+        where: { id: batch.id },
+        data: {
+          quantityCurrent: newQuantity,
+          isExhausted,
+        },
+      });
+
+      // Create movement
+      const movement = await tx.inventoryMovement.create({
+        data: {
+          tenantId: params.tenantId,
+          productId: params.productId,
+          batchId: batch.id,
+          type: params.movementType,
+          quantity: toConsume,
+          stockBefore: batchCurrent,
+          stockAfter: newQuantity,
+          warehouseOriginId: params.warehouseId,
+          warehouseDestinationId: params.warehouseDestinationId,
+          unitCost: batch.unitCost,
+          totalCost: toConsume.mul(batch.unitCost),
+          destinationType: params.destinationType,
+          destinationRef: params.destinationRef,
+          referenceType: params.referenceType,
+          referenceId: params.referenceId,
+          performedById: params.userId,
+          notes: params.notes,
+        },
+      });
+
+      movements.push({
+        ...movement,
+        batchNumber: batch.batchNumber,
+        batchId: batch.id,
+      });
+
+      remaining = remaining.sub(toConsume);
+    }
+
+    return movements;
+  }
+
 
   /**
    * Generate a unique batch number if not provided
@@ -198,7 +302,7 @@ export class InventoryService {
               invoiceNumber: dto.invoiceNumber,
               totalAmount: totalCost,
               balanceAmount: totalCost, // Full amount pending
-              issueDate: new Date(),
+              issueDate: dto.issueDate ? new Date(dto.issueDate) : new Date(),
               dueDate,
               status: PayableStatus.CURRENT,
               notes: dto.notes
@@ -287,108 +391,20 @@ export class InventoryService {
 
     // Execute FIFO logic in transaction
     const result = await this.prisma.$transaction(async (tx) => {
-      // Step 1: Get available batches, ordered by receivedAt ASC (FIFO)
-      const availableBatches = await tx.batch.findMany({
-        where: {
-          tenantId,
-          productId: dto.productId,
-          warehouseId: dto.warehouseId,
-          quantityCurrent: { gt: 0 },
-          isExhausted: false,
-        },
-        orderBy: [{ receivedAt: 'asc' }, { createdAt: 'asc' }], // FIFO: oldest first, deterministic tie-breaker
+      // Use reusable FIFO logic
+      const movements = await this.consumeFromBatchesFIFO(tx as PrismaService, {
+        tenantId,
+        productId: dto.productId,
+        warehouseId: dto.warehouseId,
+        quantity: requestedQuantity,
+        userId,
+        movementType,
+        destinationType: dto.destinationType,
+        destinationRef: dto.destinationRef,
+        referenceType: dto.reason,
+        referenceId: dto.referenceId,
+        notes: dto.notes,
       });
-
-      if (availableBatches.length === 0) {
-        throw new BadRequestException(
-          'No hay stock disponible para este producto en esta bodega',
-        );
-      }
-
-      // Calculate total available stock
-      const totalAvailable = availableBatches.reduce(
-        (sum, batch) => sum.add(batch.quantityCurrent),
-        new Decimal(0),
-      );
-
-      if (totalAvailable.lt(requestedQuantity)) {
-        throw new BadRequestException(
-          `Stock insuficiente. Disponible: ${totalAvailable.toString()}, Solicitado: ${requestedQuantity.toString()}`,
-        );
-      }
-
-      // Step 2: Iterate batches to satisfy requested quantity (FIFO)
-      let remaining = requestedQuantity;
-      const movements: Array<{
-        id: string;
-        batchId: string;
-        batchNumber: string;
-        quantity: Decimal;
-        stockBefore: Decimal;
-        stockAfter: Decimal;
-      }> = [];
-
-      for (const batch of availableBatches) {
-        if (remaining.lte(0)) break;
-
-        const batchCurrent = batch.quantityCurrent;
-        const toConsume = Decimal.min(remaining, batchCurrent);
-        const newQuantity = batchCurrent.sub(toConsume);
-        const isExhausted = newQuantity.lte(0);
-
-        // Update batch
-        await tx.batch.update({
-          where: { id: batch.id },
-          data: {
-            quantityCurrent: newQuantity,
-            isExhausted,
-          },
-        });
-
-        // Create movement for this batch consumption
-        const movement = await tx.inventoryMovement.create({
-          data: {
-            tenantId,
-            productId: dto.productId,
-            batchId: batch.id,
-            type: movementType,
-            quantity: toConsume,
-            stockBefore: batchCurrent,
-            stockAfter: newQuantity,
-            warehouseOriginId: dto.warehouseId,
-            unitCost: batch.unitCost,
-            totalCost: toConsume.mul(batch.unitCost),
-            destinationType: dto.destinationType,
-            destinationRef: dto.destinationRef,
-            referenceType: dto.reason,
-            referenceId: dto.referenceId,
-            performedById: userId,
-            notes: dto.notes,
-          },
-        });
-
-        movements.push({
-          id: movement.id,
-          batchId: batch.id,
-          batchNumber: batch.batchNumber,
-          quantity: toConsume,
-          stockBefore: batchCurrent,
-          stockAfter: newQuantity,
-        });
-
-        remaining = remaining.sub(toConsume);
-
-        this.logger.debug(
-          `Consumed ${toConsume} from batch ${batch.batchNumber}. Remaining: ${remaining}`,
-        );
-      }
-
-      // Safety check (should never happen due to earlier validation)
-      if (remaining.gt(0)) {
-        throw new BadRequestException(
-          'Stock insuficiente después del procesamiento FIFO',
-        );
-      }
 
       return movements;
     });
@@ -402,6 +418,92 @@ export class InventoryService {
       movements: result,
       affectedBatches: result.length,
     };
+  }
+
+  /**
+   * Register internal transfer between warehouses
+   * Atomic transaction: Outbound from Origin + Inbound to Destination
+   */
+  async registerTransfer(
+    tenantId: string,
+    userId: string,
+    dto: CreateTransferDto,
+  ) {
+    this.logger.log(`Registering transfer from ${dto.originWarehouseId} to ${dto.destinationWarehouseId}`);
+
+    // Same tenant validation
+    if (dto.originWarehouseId === dto.destinationWarehouseId) {
+      throw new BadRequestException('Bodega origen y destino deben ser diferentes');
+    }
+
+    return await this.prisma.$transaction(async (tx) => {
+      const results: { productId: string; status: string }[] = [];
+
+      for (const item of dto.items) {
+        // 1. Outbound from Origin (FIFO) using reusable method
+        const outMovements = await this.consumeFromBatchesFIFO(tx as PrismaService, {
+          tenantId,
+          productId: item.productId,
+          warehouseId: dto.originWarehouseId,
+          quantity: new Decimal(item.quantity),
+          userId,
+          movementType: MovementType.TRANSFER,
+          warehouseDestinationId: dto.destinationWarehouseId,
+          notes: dto.notes ? `Traslado Salida: ${dto.notes}` : 'Traslado entre bodegas',
+        });
+
+        // 2. Inbound to Destination (Create new batch for each outbound movement)
+        for (const outMov of outMovements) {
+          // Fetch source batch properties (needed for inheritance)
+          const sourceBatch = await tx.batch.findUnique({
+            where: { id: outMov.batchId! }, // BatchId guaranteed by FIFO method
+          });
+
+          if (!sourceBatch) throw new Error(`Batch ${outMov.batchId} not found during transfer`);
+
+          // Create new batch at destination
+          const newBatch = await tx.batch.create({
+            data: {
+              tenantId,
+              productId: item.productId,
+              warehouseId: dto.destinationWarehouseId,
+              supplierId: sourceBatch.supplierId,
+              batchNumber: this.generateBatchNumber(),
+              quantityInitial: outMov.quantity,
+              quantityCurrent: outMov.quantity,
+              unitCost: outMov.unitCost || new Decimal(0),
+              receivedAt: new Date(),
+              expiresAt: sourceBatch.expiresAt,
+              isQuarantined: false,
+            },
+          });
+
+          // Create IN movement linked to OUT movement
+          await tx.inventoryMovement.create({
+            data: {
+              tenantId,
+              productId: item.productId,
+              batchId: newBatch.id,
+              type: MovementType.TRANSFER,
+              quantity: outMov.quantity,
+              stockBefore: new Decimal(0),
+              stockAfter: outMov.quantity,
+              warehouseOriginId: dto.originWarehouseId,
+              warehouseDestinationId: dto.destinationWarehouseId,
+              unitCost: outMov.unitCost || new Decimal(0),
+              totalCost: (outMov.unitCost || new Decimal(0)).mul(outMov.quantity),
+              performedById: userId,
+              notes: dto.notes ? `Traslado Entrada: ${dto.notes}` : 'Recepción de traslado',
+              referenceType: 'MOVEMENT',
+              referenceId: outMov.id, // Link to outbound movement
+            },
+          });
+        }
+
+        results.push({ productId: item.productId, status: 'OK' });
+      }
+      return results;
+    });
   }
 
   /**
@@ -551,6 +653,87 @@ export class InventoryService {
     return {
       count: result.length,
       batches: result,
+    };
+  }
+  /**
+   * List all inventory movements with filters (History Log)
+   */
+  async findAllMovements(tenantId: string, query: QueryMovementsDto) {
+    const {
+      page = 1,
+      limit = 20,
+      type,
+      productId,
+      warehouseId,
+      userId,
+      startDate,
+      endDate,
+      search,
+    } = query;
+    const skip = (page - 1) * limit;
+
+    const where: any = { tenantId };
+    const andConditions: any[] = [];
+
+    if (type) where.type = type;
+    if (productId) where.productId = productId;
+    if (userId) where.performedById = userId;
+
+    if (warehouseId) {
+      andConditions.push({
+        OR: [
+          { warehouseOriginId: warehouseId },
+          { warehouseDestinationId: warehouseId },
+        ],
+      });
+    }
+
+    if (startDate || endDate) {
+      const dateFilter: any = {};
+      if (startDate) dateFilter.gte = new Date(startDate);
+      if (endDate) dateFilter.lte = new Date(endDate);
+      where.createdAt = dateFilter;
+    }
+
+    if (search) {
+      andConditions.push({
+        OR: [
+          { referenceId: { contains: search, mode: 'insensitive' } },
+          { notes: { contains: search, mode: 'insensitive' } },
+        ],
+      });
+    }
+
+    if (andConditions.length > 0) {
+      where.AND = andConditions;
+    }
+
+    const [movements, total] = await Promise.all([
+      this.prisma.inventoryMovement.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          product: { select: { id: true, name: true, sku: true } },
+          performedBy: {
+            select: { id: true, firstName: true, lastName: true, email: true },
+          },
+          warehouseOrigin: { select: { id: true, name: true } },
+          warehouseDestination: { select: { id: true, name: true } },
+        },
+      }),
+      this.prisma.inventoryMovement.count({ where }),
+    ]);
+
+    return {
+      data: movements,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
     };
   }
 }

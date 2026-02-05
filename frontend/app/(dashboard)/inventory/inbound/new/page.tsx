@@ -57,10 +57,10 @@ export default function NewInboundPage() {
     const [activeProduct, setActiveProduct] = useState<any>(null)
 
     // Financials
-    const [qtyInput, setQtyInput] = useState(1)
-    const [basePriceInput, setBasePriceInput] = useState(0)
-    const [discountInput, setDiscountInput] = useState(0)
-    const [taxRateInput, setTaxRateInput] = useState(0) // Percentage 0-100 for UI ease
+    const [qtyInput, setQtyInput] = useState("1")
+    const [basePriceInput, setBasePriceInput] = useState("0")
+    const [discountInput, setDiscountInput] = useState("0")
+    const [taxRateInput, setTaxRateInput] = useState("0") // Percentage 0-100
 
     // Logistics
     const [batchInput, setBatchInput] = useState("")
@@ -123,8 +123,8 @@ export default function NewInboundPage() {
             if (product) {
                 setActiveProduct(product)
                 // Default values from product
-                setBasePriceInput(Number(product.costAverage) || 0)
-                setTaxRateInput(0) // Default tax could come from product settings later
+                setBasePriceInput(product.costAverage ? String(product.costAverage) : "0")
+                setTaxRateInput("0") // Default tax could come from product settings later
                 setScanCode("")
 
                 // Focus quantity
@@ -171,10 +171,10 @@ export default function NewInboundPage() {
     const clearStaging = () => {
         setScanCode("")
         setActiveProduct(null)
-        setQtyInput(1)
-        setBasePriceInput(0)
-        setDiscountInput(0)
-        setTaxRateInput(0)
+        setQtyInput("1")
+        setBasePriceInput("0")
+        setDiscountInput("0")
+        setTaxRateInput("0")
         setBatchInput("")
         setExpiryInput("")
         setIsFreeInput(false)
@@ -182,10 +182,15 @@ export default function NewInboundPage() {
     }
 
     // Calculated fields (Live Preview)
-    const calculatedSubtotal = qtyInput * basePriceInput
-    const calculatedTax = (calculatedSubtotal - discountInput) * (taxRateInput / 100)
-    const calculatedTotal = (calculatedSubtotal - discountInput) + calculatedTax
-    const calculatedUnitCost = qtyInput > 0 ? calculatedTotal / qtyInput : 0
+    const valQty = parseFloat(qtyInput) || 0
+    const valBase = parseFloat(basePriceInput) || 0
+    const valDisc = parseFloat(discountInput) || 0
+    const valTaxRate = parseFloat(taxRateInput) || 0
+
+    const calculatedSubtotal = valQty * valBase
+    const calculatedTax = (calculatedSubtotal - valDisc) * (valTaxRate / 100)
+    const calculatedTotal = (calculatedSubtotal - valDisc) + calculatedTax
+    const calculatedUnitCost = valQty > 0 ? calculatedTotal / valQty : 0
 
     const addItemToQueue = () => {
         if (!activeProduct) return
@@ -195,14 +200,14 @@ export default function NewInboundPage() {
             productId: activeProduct.id,
             productName: activeProduct.name,
             sku: activeProduct.sku,
-            quantity: qtyInput,
+            quantity: valQty,
             // Logistics
             batchNumber: batchInput || undefined,
             expiresAt: expiryInput || undefined,
             // Financials stored for display
-            basePrice: basePriceInput,
-            discount: discountInput,
-            taxRate: taxRateInput,
+            basePrice: valBase,
+            discount: valDisc,
+            taxRate: valTaxRate,
             // Effective unit cost for Backend
             unitCost: calculatedUnitCost,
             totalLine: calculatedTotal,
@@ -256,6 +261,7 @@ export default function NewInboundPage() {
 
                     // Automation
                     invoiceNumber: invoiceNumber || undefined,
+                    issueDate: emissionDate ? new Date(emissionDate).toISOString() : undefined,
                     createPayable: true,
                     paymentTermDays: 30
                 })
@@ -302,12 +308,21 @@ export default function NewInboundPage() {
                             <Input className="pl-10 bg-slate-50 border-slate-200 h-10 rounded-lg" placeholder="F-000000" value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} />
                         </div>
                     </div>
-                    <div className="md:col-span-6 space-y-2">
+                    <div className="md:col-span-3 space-y-2">
                         <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Proveedor</Label>
                         <Select value={supplierId} onValueChange={setSupplierId}>
                             <SelectTrigger className="bg-slate-50 border-slate-200 h-10 rounded-lg"><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
                             <SelectContent>
                                 {suppliers.map((s: any) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="md:col-span-3 space-y-2">
+                        <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Bodega Destino</Label>
+                        <Select value={warehouseId} onValueChange={setWarehouseId}>
+                            <SelectTrigger className="bg-slate-50 border-slate-200 h-10 rounded-lg"><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
+                            <SelectContent>
+                                {warehouses.map((w: any) => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}
                             </SelectContent>
                         </Select>
                     </div>
@@ -352,19 +367,19 @@ export default function NewInboundPage() {
                     <div className="flex flex-wrap items-end gap-3">
                         <div className="w-20">
                             <Label className="text-[9px] font-bold text-slate-400 uppercase">Cant.</Label>
-                            <Input ref={qtyRef} type="number" className="h-9 bg-white rounded-lg" min={1} value={qtyInput} onChange={e => setQtyInput(Number(e.target.value))} disabled={!activeProduct} />
+                            <Input ref={qtyRef} type="number" step="any" className="h-9 bg-white rounded-lg" min={1} value={qtyInput} onChange={e => setQtyInput(e.target.value)} disabled={!activeProduct} />
                         </div>
                         <div className="w-28">
                             <Label className="text-[9px] font-bold text-slate-400 uppercase">Costo Base</Label>
-                            <Input type="number" className="h-9 bg-white rounded-lg" value={basePriceInput} onChange={e => setBasePriceInput(Number(e.target.value))} disabled={!activeProduct} />
+                            <Input type="number" step="any" className="h-9 bg-white rounded-lg" value={basePriceInput} onChange={e => setBasePriceInput(e.target.value)} disabled={!activeProduct} />
                         </div>
                         <div className="w-20">
                             <Label className="text-[9px] font-bold text-slate-400 uppercase">Desc ($)</Label>
-                            <Input type="number" className="h-9 bg-white text-red-500 rounded-lg" value={discountInput} onChange={e => setDiscountInput(Number(e.target.value))} disabled={!activeProduct} />
+                            <Input type="number" step="any" className="h-9 bg-white text-red-500 rounded-lg" value={discountInput} onChange={e => setDiscountInput(e.target.value)} disabled={!activeProduct} />
                         </div>
                         <div className="w-16">
                             <Label className="text-[9px] font-bold text-slate-400 uppercase">IVA %</Label>
-                            <Input type="number" className="h-9 bg-white rounded-lg" value={taxRateInput} onChange={e => setTaxRateInput(Number(e.target.value))} disabled={!activeProduct} />
+                            <Input type="number" step="any" className="h-9 bg-white rounded-lg" value={taxRateInput} onChange={e => setTaxRateInput(e.target.value)} disabled={!activeProduct} />
                         </div>
 
                         {/* Logistics Fields */}

@@ -271,6 +271,8 @@ model Batch {
   @@index([tenantId, warehouseId])
   @@index([tenantId, expiresAt])
   @@index([quantityCurrent])
+  // OPTIMIZATION: Composite index for FIFO batch lookups (Outbound, Transfer, Audit)
+  @@index([tenantId, productId, warehouseId, isExhausted, receivedAt])
   @@map("batches")
 }
 

@@ -29,6 +29,7 @@ const navigation = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
     { name: "Punto de Venta", href: "/pos", icon: Store },
     { name: "Inventario", href: "/inventory", icon: Package },
+    { name: "Movimientos", href: "/inventory/movements", icon: BarChart3 },
     { name: "Proveedores", href: "/suppliers", icon: Users },
     { name: "Pedidos", href: "/orders", icon: ShoppingCart },
     { name: "Tesorería", href: "/treasury", icon: Landmark },
@@ -150,7 +151,14 @@ export function AppSidebar() {
             <div className="flex-1 overflow-y-auto py-6 px-3">
                 <nav className="space-y-1">
                     {navigation.map((item) => {
-                        const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+                        let isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+
+                        // Fix: Start - Prevent "Inventario" collision with "Movimientos"
+                        if (item.href === '/inventory' && pathname.startsWith('/inventory/movements')) {
+                            isActive = false
+                        }
+                        // Fix: End
+
                         return (
                             <Link
                                 key={item.name}

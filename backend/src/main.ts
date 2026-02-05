@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import helmet from 'helmet';
 import { AppModule } from './app.module.js';
 
 async function bootstrap() {
@@ -9,6 +10,12 @@ async function bootstrap() {
 
   // Global prefix /api/v1
   app.setGlobalPrefix('api/v1');
+
+  // Security headers - protects against XSS, clickjacking, etc.
+  app.use(helmet({
+    contentSecurityPolicy: false, // Disable for Swagger UI compatibility
+    crossOriginEmbedderPolicy: false, // Allow embedding resources
+  }));
 
   // Enable CORS for frontend (Next.js)
   app.enableCors({
@@ -35,7 +42,7 @@ async function bootstrap() {
     .setTitle('Inventory SaaS API')
     .setDescription(
       'API para el Sistema de Inventario SaaS Multi-tenant. ' +
-        'Soporta Hoteles, Restaurantes y Retail.',
+      'Soporta Hoteles, Restaurantes y Retail.',
     )
     .setVersion('1.0')
     .addBearerAuth()

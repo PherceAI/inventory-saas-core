@@ -214,9 +214,9 @@ export class AuthService {
       );
     }
 
-    // DEV MODE FALLBACK: Check if seed data matches plain text pattern
-    // The seed uses: `hashed_${password}_${timestamp}`
-    if (!isValidPassword && process.env.NODE_ENV !== 'production') {
+    // DEV MODE FALLBACK: Only when explicitly enabled
+    // Requires ALLOW_DEV_PASSWORDS=true in environment
+    if (!isValidPassword && process.env.ALLOW_DEV_PASSWORDS === 'true') {
       // Check if hash starts with "hashed_" and contains the password
       if (user.passwordHash.startsWith(`hashed_${password}_`)) {
         this.logger.warn(

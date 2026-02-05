@@ -107,4 +107,12 @@ export class CreateInboundMovementDto {
   @IsOptional()
   @Min(0)
   paymentTermDays?: number;
+
+  @ApiPropertyOptional({
+    description: 'Fecha de emisión de la factura (ISO 8601)',
+    example: '2026-02-04T00:00:00.000Z',
+  })
+  @IsDateString({}, { message: 'issueDate debe ser una fecha válida ISO 8601' })
+  @IsOptional()
+  issueDate?: string;
 }

@@ -13,6 +13,7 @@ import {
 import {
   CreateInboundMovementDto,
   CreateOutboundMovementDto,
+  QueryMovementsDto,
 } from './dto/index.js';
 import { ActiveTenant, RequireTenant } from '../../common/decorators/index.js';
 import type { ActiveTenantData } from '../../common/decorators/index.js';
@@ -24,6 +25,23 @@ import { CurrentUser } from '../auth/decorators/index.js';
 @Controller('inventory')
 export class InventoryController {
   constructor(private readonly inventoryService: InventoryService) { }
+
+  /**
+   * GET /inventory/movements
+   * Get all movements (History Log)
+   */
+  @Get('movements')
+  @ApiOperation({
+    summary: 'Historial de movimientos',
+    description: 'Consulta el historial completo de transacciones (Kardex).',
+  })
+  @ApiResponse({ status: 200, description: 'Historial consultado exitosamente' })
+  async getAllMovements(
+    @ActiveTenant() tenant: ActiveTenantData,
+    @Query() query: QueryMovementsDto,
+  ) {
+    return this.inventoryService.findAllMovements(tenant.tenantId, query);
+  }
 
   /**
    * POST /inventory/inbound
@@ -200,5 +218,21 @@ export class InventoryController {
     const daysAhead = days ? parseInt(days, 10) : 30;
     return this.inventoryService.getExpiringBatches(tenant.tenantId, daysAhead);
   }
-}
 
+  /**
+   * POST /inventory/transfer
+   * Register transfer between warehouses
+   */
+  @Post('transfer')
+  @ApiOperation({
+    summary: 'Registrar traslado entre bodegas',
+    description: 'Mueve stock de una bodega a otra (Salida + Entrada atómica).',
+  })
+  async registerTransfer(
+    @ActiveTenant() tenant: ActiveTenantData,
+    @CurrentUser() user: { userId: string },
+    @Body() dto: any, // Using any temporarily to avoid import cycle issue if CreateTransferDto is not exported yet
+  ) {
+    return this.inventoryService.registerTransfer(tenant.tenantId, user.userId, dto);
+  }
+}

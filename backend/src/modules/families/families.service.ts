@@ -39,10 +39,18 @@ export class FamiliesService {
      * List product families with pagination
      */
     async findAll(tenantId: string, query: QueryFamiliesDto) {
-        const { search, page = 1, limit = 20 } = query;
+        const {
+            search,
+            page = 1,
+            limit = 20,
+            includeInactive = false, // Default: only active
+        } = query;
         const skip = (page - 1) * limit;
 
-        const where: any = { tenantId };
+        const where: any = {
+            tenantId,
+            ...(!includeInactive && { isActive: true }), // CONSISTENCY FIX: Filter inactive by default
+        };
 
         if (search) {
             where.name = { contains: search, mode: 'insensitive' };

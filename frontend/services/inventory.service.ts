@@ -11,6 +11,7 @@ export interface CreateInboundDto {
     notes?: string;
     // New fields for logic fix
     invoiceNumber?: string;
+    issueDate?: string;
     createPayable?: boolean;
     paymentTermDays?: number;
 }
@@ -23,6 +24,16 @@ export const InventoryService = {
 
     registerOutbound: async (data: any) => {
         const response = await api.post('/inventory/outbound', data);
+        return response.data;
+    },
+
+    registerTransfer: async (data: any) => {
+        const response = await api.post('/inventory/transfer', data);
+        return response.data;
+    },
+
+    getAllMovements: async (params?: any) => {
+        const response = await api.get('/inventory/movements', { params });
         return response.data;
     }
 };

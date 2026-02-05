@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsInt, Min, Max, IsString } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsOptional, IsInt, Min, Max, IsString, IsBoolean } from 'class-validator';
+import { Type, Transform } from 'class-transformer';
 
 /**
  * DTO for querying product families
@@ -13,6 +13,15 @@ export class QueryFamiliesDto {
     @IsString()
     @IsOptional()
     search?: string;
+
+    @ApiPropertyOptional({
+        description: 'Incluir familias inactivas',
+        default: false,
+    })
+    @Transform(({ value }) => value === 'true' || value === true)
+    @IsBoolean()
+    @IsOptional()
+    includeInactive?: boolean;
 
     @ApiPropertyOptional({
         description: 'Página',
@@ -38,3 +47,4 @@ export class QueryFamiliesDto {
     @IsOptional()
     limit?: number;
 }
+

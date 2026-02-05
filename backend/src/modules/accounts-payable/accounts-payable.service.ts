@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../common/database/index.js';
 import { QueryPayablesDto, RegisterPaymentDto, PayableStatusFilter } from './dto/index.js';
-import { PayableStatus } from '@prisma/client';
+import { PayableStatus, Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 
 /**
@@ -32,7 +32,7 @@ export class AccountsPayableService {
         const { status, supplierId, dueDateFrom, dueDateTo, page = 1, limit = 20 } = query;
         const skip = (page - 1) * limit;
 
-        const where: any = { tenantId };
+        const where: Prisma.AccountPayableWhereInput = { tenantId };
 
         if (status) {
             where.status = status as PayableStatus;

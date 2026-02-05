@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../common/database/index.js';
+import { UserRole, Prisma } from '@prisma/client';
 
 export interface UserTenant {
   id: string;
@@ -7,6 +8,28 @@ export interface UserTenant {
   slug: string;
   businessType: string;
   role: string;
+}
+
+/**
+ * Settings DTO for tenant configuration updates
+ */
+export interface UpdateTenantSettingsDto {
+  profile?: {
+    name?: string;
+    legalName?: string;
+    taxId?: string;
+    address?: string;
+    phone?: string;
+    email?: string;
+    website?: string;
+    logo?: string;
+  };
+  localization?: {
+    timezone?: string;
+    currency?: string;
+    dateFormat?: string;
+    language?: string;
+  };
 }
 
 @Injectable()
@@ -81,6 +104,7 @@ export class TenantsService {
       userRole: tenantUser.role,
     };
   }
+
   /**
    * Get all users for a specific tenant
    */
@@ -141,8 +165,6 @@ export class TenantsService {
         throw new Error('Password is required for new users');
       }
 
-      // Hack: Import bcrypt dynamically or move to utility to avoid circ dep with AuthService if it was used
-      // For now we trust bcrypt is installed as seen in package.json
       const bcrypt = await import('bcrypt');
       const passwordHash = await bcrypt.hash(dto.password, 10);
 
@@ -174,7 +196,7 @@ export class TenantsService {
           where: { id: existingRelation.id },
           data: {
             isActive: true,
-            role: dto.role as any, // Cast to enum
+            role: dto.role as UserRole,
           },
         });
       }
@@ -186,7 +208,7 @@ export class TenantsService {
       data: {
         tenantId,
         userId: user.id,
-        role: dto.role as any,
+        role: dto.role as UserRole,
         isActive: true,
       },
     });
@@ -196,13 +218,6 @@ export class TenantsService {
    * Remove user from tenant (soft delete relationship)
    */
   async removeUser(tenantId: string, userId: string) {
-    // Prevention: Cannot remove yourself (should be checked in controller, but safe here too)
-    // Actually, we don't have current user context here easily without passing it.
-    // We will assume controller checks "Don't delete yourself" or we allow "Leave tenant".
-
-    // Check if user is owner of the tenant? 
-    // Ideally we shouldn't allow removing the last owner.
-
     return this.prisma.tenantUser.update({
       where: {
         tenantId_userId: {
@@ -212,6 +227,54 @@ export class TenantsService {
       },
       data: {
         isActive: false,
+      },
+    });
+  }
+
+  /**
+   * Update tenant settings (Profile, Localization, etc.)
+   * Merges new settings with existing ones.
+   */
+  async updateSettings(tenantId: string, dto: UpdateTenantSettingsDto) {
+    // 1. Get current settings
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { settings: true },
+    });
+
+    if (!tenant) throw new Error('Tenant not found');
+
+    // 2. Merge settings
+    const currentSettings = (tenant.settings as Record<string, unknown>) || {};
+
+    const updatedSettings: Record<string, unknown> = {
+      ...currentSettings,
+    };
+
+    if (dto.profile) {
+      updatedSettings.profile = {
+        ...((currentSettings.profile as Record<string, unknown>) || {}),
+        ...dto.profile,
+      };
+    }
+
+    if (dto.localization) {
+      updatedSettings.localization = {
+        ...((currentSettings.localization as Record<string, unknown>) || {}),
+        ...dto.localization,
+      };
+    }
+
+    // 3. Save to DB
+    return this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: {
+        settings: updatedSettings as Prisma.InputJsonValue,
+      },
+      select: {
+        id: true,
+        name: true,
+        settings: true,
       },
     });
   }

@@ -11,80 +11,127 @@ import {
     ClipboardCheck,
     Barcode,
     Trash2,
-    Calendar as CalendarIcon,
-    AlertCircle,
     ArrowLeft,
     Loader2,
-    Warehouse,
-    Search,
-    RotateCcw
+    RotateCcw,
+    CheckCircle2
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 
 // Services
-import { ProductsService } from "@/services/products.service"
-import { WarehousesService } from "@/services/warehouses.service" // Assuming this exists or using mock
+import { WarehousesService, Warehouse } from "@/services/warehouses.service"
+import { AuditsService, Audit, AuditItem } from "@/services/audits.service"
 
 // --- Types ---
-interface AuditItem {
+interface LocalAuditItem {
     id: string
     productId: string
     productName: string
     sku: string
-    batch?: string
     systemStock: number
-    countedStock: number
-    variance: number
+    countedStock: number | null
+    variance: number | null
+    isUpdated: boolean
 }
-
-// Mock Items for demo (until backend connection is solid)
-const MOCK_SNAPSHOT = [
-    { id: "1", productId: "p1", name: "Vodka Grey Goose 750ml", sku: "VOD-GREY-750", batch: "L-2023-A", systemStock: 24 },
-    { id: "2", productId: "p1", name: "Vodka Grey Goose 750ml", sku: "VOD-GREY-750", batch: "L-2024-B", systemStock: 12 },
-    { id: "3", productId: "p2", name: "Ron Zacapa 23 Años", sku: "RUM-ZAC-23", batch: "BATCH-001", systemStock: 8 },
-]
 
 export default function NewAuditPage() {
     const router = useRouter()
     const { toast } = useToast()
     const [isLoading, setIsLoading] = useState(false)
-    const [warehouses, setWarehouses] = useState<any[]>([])
+    const [isCreatingAudit, setIsCreatingAudit] = useState(false)
+    const [warehouses, setWarehouses] = useState<Warehouse[]>([])
 
     // Header State
     const [auditName, setAuditName] = useState(`AUD-${new Date().getFullYear()}-${Math.floor(Math.random() * 1000)}`)
     const [warehouseId, setWarehouseId] = useState("")
     const [isBlind, setIsBlind] = useState(false)
 
+    // Audit State (from backend)
+    const [currentAudit, setCurrentAudit] = useState<Audit | null>(null)
+
     // Staging / Scan State
     const [scanCode, setScanCode] = useState("")
-    const [activeItem, setActiveItem] = useState<any>(null) // The item found in snapshot or DB
-    const [countInput, setCountInput] = useState(0)
+    const [activeItemIndex, setActiveItemIndex] = useState<number | null>(null)
+    const [countInput, setCountInput] = useState<number>(0)
 
-    // The Audit List (Active Snapshot)
-    const [items, setItems] = useState<AuditItem[]>([])
+    // Local Items (mapped from audit)
+    const [items, setItems] = useState<LocalAuditItem[]>([])
 
     // Focus Refs
     const countRef = useRef<HTMLInputElement>(null)
     const scanRef = useRef<HTMLInputElement>(null)
 
-    // --- Load Data ---
+    // --- Load Warehouses ---
     useEffect(() => {
         const loadWarehouses = async () => {
             try {
-                // Determine if we have the service, otherwise mock
-                const data = await WarehousesService.getAll().catch(() => [
-                    { id: "main", name: "Bodega Central A1" },
-                    { id: "kitchen", name: "Depósito Cocina" },
-                    { id: "bar", name: "Barra Principal" }
-                ])
+                const data = await WarehousesService.getAll()
                 setWarehouses(data || [])
             } catch (error) {
                 console.error("Error loading warehouses", error)
+                toast({
+                    variant: "destructive",
+                    title: "Error",
+                    description: "No se pudieron cargar las bodegas."
+                })
             }
         }
         loadWarehouses()
-    }, [])
+    }, [toast])
+
+    // --- Create Audit & Load Snapshot ---
+    const loadSystemSnapshot = async () => {
+        if (!warehouseId) {
+            toast({
+                variant: "destructive",
+                title: "Selecciona bodega",
+                description: "Debes seleccionar una bodega primero."
+            })
+            return
+        }
+
+        setIsCreatingAudit(true)
+        try {
+            // 1. Create audit in backend (this snapshots real stock)
+            const audit = await AuditsService.create({
+                warehouseId,
+                name: auditName
+            })
+
+            // 2. Load full audit with items
+            const fullAudit = await AuditsService.getById(audit.id)
+            setCurrentAudit(fullAudit)
+
+            // 3. Map to local items
+            const localItems: LocalAuditItem[] = (fullAudit.items || []).map(item => ({
+                id: item.id,
+                productId: item.productId,
+                productName: item.product.name,
+                sku: item.product.sku,
+                systemStock: Number(item.systemStock) || 0,
+                countedStock: item.countedStock !== null ? Number(item.countedStock) : null,
+                variance: item.variance !== null ? Number(item.variance) : null,
+                isUpdated: item.countedStock !== null
+            }))
+
+            setItems(localItems)
+
+            toast({
+                title: "Auditoría Creada",
+                description: `Se cargaron ${localItems.length} productos del sistema.`
+            })
+        } catch (error: any) {
+            console.error("Error creating audit", error)
+            toast({
+                variant: "destructive",
+                title: "Error",
+                description: error?.response?.data?.message || "No se pudo crear la auditoría."
+            })
+        } finally {
+            setIsCreatingAudit(false)
+        }
+    }
 
     // --- Search & Scan Logic ---
     const handleScan = async (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -92,110 +139,69 @@ export default function NewAuditPage() {
             e.preventDefault()
             if (!scanCode.trim()) return
 
-            // 1. Try to find in current list first (to update count)
-            const existingInList = items.find(i => i.sku.toLowerCase() === scanCode.toLowerCase() || i.batch?.toLowerCase() === scanCode.toLowerCase())
+            // Find in current list by SKU (partial match)
+            const foundIndex = items.findIndex(i =>
+                i.sku.toLowerCase().includes(scanCode.toLowerCase()) ||
+                i.productName.toLowerCase().includes(scanCode.toLowerCase())
+            )
 
-            if (existingInList) {
-                setActiveItem(existingInList)
-                setCountInput(existingInList.countedStock) // Pre-fill with current count
+            if (foundIndex !== -1) {
+                setActiveItemIndex(foundIndex)
+                setCountInput(items[foundIndex].countedStock ?? 0)
                 setScanCode("")
-                setTimeout(() => countRef.current?.focus(), 50)
-                return
-            }
-
-            // 2. If not in list, find in DB (Simulated)
-            try {
-                // Simulation of "Finding a product that wasn't expected" or "First scan"
-                // in a real app, this searches the API
-                const product = await ProductsService.findByTerm(scanCode).catch(() => null)
-
-                if (product) {
-                    // Create a new audit line for this found product
-                    const newItem: AuditItem = {
-                        id: crypto.randomUUID(),
-                        productId: product.id,
-                        productName: product.name,
-                        sku: product.sku,
-                        batch: "N/A", // If scanned by SKU, batch is unknown or N/A
-                        systemStock: product.stockLevel || 0,
-                        countedStock: 0,
-                        variance: 0 - (product.stockLevel || 0)
-                    }
-                    setActiveItem(newItem)
-                    setCountInput(0)
-                    setScanCode("")
-                    setTimeout(() => countRef.current?.focus(), 50)
-                } else {
-                    toast({
-                        variant: "destructive",
-                        title: "No encontrado",
-                        description: "No se encontró ningún producto con ese código."
-                    })
-                    setActiveItem(null)
-                }
-            } catch (err) {
-                // Fallback to mock for demo if API fails
-                const mock = MOCK_SNAPSHOT.find(m => m.sku.toLowerCase().includes(scanCode.toLowerCase()))
-                if (mock) {
-                    const newItem: AuditItem = {
-                        id: crypto.randomUUID(),
-                        productId: mock.productId,
-                        productName: mock.name,
-                        sku: mock.sku,
-                        batch: mock.batch,
-                        systemStock: mock.systemStock,
-                        countedStock: 0,
-                        variance: 0 - mock.systemStock
-                    }
-                    setActiveItem(newItem)
-                    setCountInput(0)
-                    setScanCode("")
-                    setTimeout(() => countRef.current?.focus(), 50)
-                } else {
-                    toast({
-                        variant: "destructive",
-                        title: "No encontrado",
-                        description: "No se encontró el producto."
-                    })
-                }
+                setTimeout(() => {
+                    countRef.current?.focus()
+                    countRef.current?.select()
+                }, 50)
+            } else {
+                toast({
+                    variant: "destructive",
+                    title: "No encontrado",
+                    description: "Producto no está en esta auditoría. Carga el snapshot primero."
+                })
             }
         }
     }
 
     const clearStaging = () => {
         setScanCode("")
-        setActiveItem(null)
+        setActiveItemIndex(null)
         setCountInput(0)
         scanRef.current?.focus()
     }
 
-    const updateOrAddItem = () => {
-        if (!activeItem) return
+    const updateItemCount = async () => {
+        if (activeItemIndex === null || !currentAudit) return
 
-        setItems(prev => {
-            const exists = prev.find(i => i.id === activeItem.id || (i.sku === activeItem.sku && i.batch === activeItem.batch))
+        const item = items[activeItemIndex]
+        const variance = countInput - item.systemStock
 
-            if (exists) {
-                // Update existing
-                return prev.map(i => {
-                    if (i.id === exists.id) {
-                        return {
-                            ...i,
-                            countedStock: countInput,
-                            variance: countInput - i.systemStock
-                        }
-                    }
-                    return i
-                })
-            } else {
-                // Add new (Surprise item found during audit)
-                return [...prev, {
-                    ...activeItem,
+        // Update locally first (optimistic)
+        setItems(prev => prev.map((i, idx) => {
+            if (idx === activeItemIndex) {
+                return {
+                    ...i,
                     countedStock: countInput,
-                    variance: countInput - activeItem.systemStock
-                }]
+                    variance,
+                    isUpdated: true
+                }
             }
-        })
+            return i
+        }))
+
+        // Update in backend
+        try {
+            await AuditsService.updateItem(currentAudit.id, item.id, {
+                quantityCounted: countInput
+            })
+        } catch (error) {
+            console.error("Error updating item", error)
+            toast({
+                variant: "destructive",
+                title: "Error al guardar",
+                description: "El conteo se guardó localmente pero hubo un error en el servidor."
+            })
+        }
 
         clearStaging()
     }
@@ -203,54 +209,60 @@ export default function NewAuditPage() {
     const handleStagingKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter') {
             e.preventDefault()
-            updateOrAddItem()
+            updateItemCount()
         }
-    }
-
-    const removeItem = (id: string) => {
-        setItems(items.filter(i => i.id !== id))
-    }
-
-    // --- Load Snapshot (Hybrid Mode) ---
-    // If user wants to pre-load all system stock
-    const loadSystemSnapshot = () => {
-        if (!warehouseId) return
-        // Mock loading
-        const snapshot = MOCK_SNAPSHOT.map(m => ({
-            id: crypto.randomUUID(),
-            productId: m.productId,
-            productName: m.name,
-            sku: m.sku,
-            batch: m.batch,
-            systemStock: m.systemStock,
-            countedStock: 0, // Default to 0 or systemStock? Typically 0 for forced count
-            variance: 0 - m.systemStock
-        }))
-        setItems(snapshot)
-        toast({ title: "Snapshot Cargado", description: "Se cargaron 3 lotes teóricos del sistema." })
     }
 
     // --- Submit Logic ---
     const handleConfirm = async () => {
-        if (!warehouseId) {
-            toast({ variant: "destructive", title: "Falta Bodega", description: "Seleccione una bodega." })
+        if (!currentAudit) {
+            toast({
+                variant: "destructive",
+                title: "Sin auditoría",
+                description: "Primero carga el snapshot del sistema."
+            })
+            return
+        }
+
+        // Check if all items have been counted
+        const uncounted = items.filter(i => i.countedStock === null).length
+        if (uncounted > 0) {
+            toast({
+                variant: "destructive",
+                title: "Items sin contar",
+                description: `Hay ${uncounted} productos sin conteo físico.`
+            })
             return
         }
 
         setIsLoading(true)
-        // Simulate API call
-        setTimeout(() => {
-            setIsLoading(false)
-            toast({ title: "Auditoría Guardada", description: "El conteo ha sido registrado exitosamente." })
+        try {
+            await AuditsService.close(currentAudit.id)
+
+            toast({
+                title: "Auditoría Finalizada",
+                description: "Los ajustes de inventario han sido registrados."
+            })
             router.push('/inventory')
-        }, 1500)
+        } catch (error: any) {
+            console.error("Error closing audit", error)
+            toast({
+                variant: "destructive",
+                title: "Error",
+                description: error?.response?.data?.message || "No se pudo cerrar la auditoría."
+            })
+        } finally {
+            setIsLoading(false)
+        }
     }
 
     // Metrics
-    const totalCounted = items.reduce((acc, i) => acc + i.countedStock, 0)
+    const countedItems = items.filter(i => i.countedStock !== null).length
     const accuracy = items.length > 0
         ? Math.round((items.filter(i => i.variance === 0).length / items.length) * 100)
         : 100
+
+    const activeItem = activeItemIndex !== null ? items[activeItemIndex] : null
 
     return (
         <div className="flex h-full flex-col bg-slate-50/50 p-6 space-y-6 overflow-hidden">
@@ -287,6 +299,7 @@ export default function NewAuditPage() {
                                 className="pl-10 bg-slate-50 border-slate-200 h-10 font-mono text-slate-700 rounded-xl"
                                 value={auditName}
                                 onChange={(e) => setAuditName(e.target.value)}
+                                disabled={!!currentAudit}
                             />
                         </div>
                     </div>
@@ -294,7 +307,7 @@ export default function NewAuditPage() {
                     {/* Warehouse Selector */}
                     <div className="md:col-span-5 space-y-2">
                         <Label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Bodega Objetivo</Label>
-                        <Select value={warehouseId} onValueChange={setWarehouseId}>
+                        <Select value={warehouseId} onValueChange={setWarehouseId} disabled={!!currentAudit}>
                             <SelectTrigger className="bg-slate-50 border-slate-200 h-10 rounded-xl">
                                 <SelectValue placeholder="Seleccionar ubicación..." />
                             </SelectTrigger>
@@ -320,11 +333,15 @@ export default function NewAuditPage() {
                             variant="outline"
                             size="sm"
                             onClick={loadSystemSnapshot}
-                            disabled={!warehouseId || items.length > 0}
+                            disabled={!warehouseId || !!currentAudit || isCreatingAudit}
                             className="h-10 border-dashed border-slate-300 text-slate-500 hover:text-amber-600 hover:bg-amber-50 hover:border-amber-200"
                         >
-                            <RotateCcw className="w-3.5 h-3.5 mr-2" />
-                            Cargar Todo
+                            {isCreatingAudit ? (
+                                <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+                            ) : (
+                                <RotateCcw className="w-3.5 h-3.5 mr-2" />
+                            )}
+                            {currentAudit ? "Cargado" : "Cargar Todo"}
                         </Button>
                     </div>
                 </div>
@@ -337,7 +354,7 @@ export default function NewAuditPage() {
                 <div className="p-5 border-b border-slate-50 flex flex-wrap md:flex-nowrap gap-4 items-end bg-white">
                     {/* Search */}
                     <div className="w-full md:flex-[3] space-y-1.5">
-                        <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Escanear Producto o Lote</Label>
+                        <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Escanear Producto</Label>
                         <div className="relative">
                             <Barcode className={`absolute left-3 top-3 h-4 w-4 ${activeItem ? 'text-amber-500' : 'text-slate-400'}`} />
                             <Input
@@ -345,7 +362,7 @@ export default function NewAuditPage() {
                                 value={scanCode}
                                 onChange={(e) => {
                                     setScanCode(e.target.value)
-                                    if (e.target.value === "") setActiveItem(null)
+                                    if (e.target.value === "") setActiveItemIndex(null)
                                 }}
                                 onKeyDown={handleScan}
                                 className={cn(
@@ -354,8 +371,9 @@ export default function NewAuditPage() {
                                         ? "border-amber-500 ring-4 ring-amber-500/10 bg-amber-50/20 text-amber-900 font-semibold"
                                         : "bg-slate-50 border-slate-200 focus:border-amber-500 focus:ring-amber-500/20"
                                 )}
-                                placeholder="Escanear código..."
+                                placeholder="Buscar por SKU o nombre..."
                                 autoComplete="off"
+                                disabled={!currentAudit}
                             />
                         </div>
                     </div>
@@ -367,8 +385,8 @@ export default function NewAuditPage() {
                             "h-10 px-4 rounded-xl border flex items-center justify-between text-sm transition-colors",
                             activeItem ? "bg-amber-50/30 border-amber-200 text-slate-900 font-medium" : "bg-slate-50 border-slate-200 text-slate-400 italic"
                         )}>
-                            <span>{activeItem ? activeItem.productName : "Esperando escaneo..."}</span>
-                            {activeItem && <span className="font-mono text-xs bg-white px-2 py-0.5 rounded border border-amber-100 text-amber-700">{activeItem.batch}</span>}
+                            <span>{activeItem ? activeItem.productName : "Escanea un producto..."}</span>
+                            {activeItem && <span className="font-mono text-xs bg-white px-2 py-0.5 rounded border border-amber-100 text-amber-700">{activeItem.sku}</span>}
                         </div>
                     </div>
 
@@ -396,7 +414,7 @@ export default function NewAuditPage() {
                                     : "bg-slate-100 text-slate-300 cursor-not-allowed"
                             )}
                             disabled={!activeItem}
-                            onClick={updateOrAddItem}
+                            onClick={updateItemCount}
                         >
                             Confirmar
                         </Button>
@@ -409,7 +427,7 @@ export default function NewAuditPage() {
                         <thead className="bg-slate-50 sticky top-0 z-10">
                             <tr>
                                 <th className="px-6 py-4 text-left font-bold text-slate-400 text-[10px] uppercase tracking-wider w-32">SKU</th>
-                                <th className="px-6 py-4 text-left font-bold text-slate-400 text-[10px] uppercase tracking-wider">Producto / Lote</th>
+                                <th className="px-6 py-4 text-left font-bold text-slate-400 text-[10px] uppercase tracking-wider">Producto</th>
                                 <th className="px-6 py-4 text-center font-bold text-slate-400 text-[10px] uppercase tracking-wider w-24">Sistema</th>
                                 <th className="px-6 py-4 text-center font-bold text-slate-400 text-[10px] uppercase tracking-wider w-24 bg-amber-50/50">Físico</th>
                                 <th className="px-6 py-4 text-right font-bold text-slate-400 text-[10px] uppercase tracking-wider w-24">Varianza</th>
@@ -425,39 +443,51 @@ export default function NewAuditPage() {
                                                 <ClipboardCheck className="h-10 w-10 opacity-20" />
                                             </div>
                                             <p className="font-medium text-slate-400">Auditoría vacía</p>
-                                            <p className="text-xs mt-1 text-slate-400">Escanea items o carga un snapshot</p>
+                                            <p className="text-xs mt-1 text-slate-400">Selecciona bodega y carga el snapshot</p>
                                         </div>
                                     </td>
                                 </tr>
-                            ) : items.map((item) => (
-                                <tr key={item.id} className="hover:bg-amber-50/20 transition-colors group">
+                            ) : items.map((item, idx) => (
+                                <tr
+                                    key={item.id}
+                                    className={cn(
+                                        "hover:bg-amber-50/20 transition-colors group cursor-pointer",
+                                        activeItemIndex === idx && "bg-amber-50/40"
+                                    )}
+                                    onClick={() => {
+                                        setActiveItemIndex(idx)
+                                        setCountInput(item.countedStock ?? 0)
+                                        setTimeout(() => countRef.current?.focus(), 50)
+                                    }}
+                                >
                                     <td className="px-6 py-4 font-mono text-slate-500 text-xs">{item.sku}</td>
                                     <td className="px-6 py-4 text-slate-700 font-medium">
-                                        <div>{item.productName}</div>
-                                        <div className="text-[10px] text-slate-400 mt-0.5">Lote: {item.batch}</div>
+                                        <div className="flex items-center gap-2">
+                                            {item.productName}
+                                            {item.isUpdated && <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
+                                        </div>
                                     </td>
                                     <td className="px-6 py-4 text-center text-slate-500">
                                         {isBlind ? "---" : item.systemStock}
                                     </td>
                                     <td className="px-6 py-4 text-center font-bold text-slate-800 bg-amber-50/30">
-                                        {item.countedStock}
+                                        {item.countedStock !== null ? item.countedStock : "-"}
                                     </td>
                                     <td className="px-6 py-4 text-right">
-                                        <span className={cn(
-                                            "px-2 py-1 rounded text-xs font-bold",
-                                            item.variance === 0 ? "bg-emerald-100 text-emerald-700" :
-                                                item.variance < 0 ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700"
-                                        )}>
-                                            {item.variance > 0 ? "+" : ""}{item.variance}
-                                        </span>
+                                        {item.variance !== null ? (
+                                            <span className={cn(
+                                                "px-2 py-1 rounded text-xs font-bold",
+                                                item.variance === 0 ? "bg-emerald-100 text-emerald-700" :
+                                                    item.variance < 0 ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700"
+                                            )}>
+                                                {item.variance > 0 ? "+" : ""}{item.variance}
+                                            </span>
+                                        ) : (
+                                            <span className="text-slate-300">-</span>
+                                        )}
                                     </td>
                                     <td className="px-4 py-4 text-center">
-                                        <button
-                                            onClick={() => removeItem(item.id)}
-                                            className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                                        >
-                                            <Trash2 className="h-4 w-4" />
-                                        </button>
+                                        {/* Row indicator or action */}
                                     </td>
                                 </tr>
                             ))}
@@ -471,12 +501,12 @@ export default function NewAuditPage() {
                         <div className="flex gap-8">
                             <div>
                                 <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-1">Items Contados</div>
-                                <div className="text-2xl font-bold text-slate-800">{items.length}</div>
+                                <div className="text-2xl font-bold text-slate-800">{countedItems} / {items.length}</div>
                             </div>
                             <div>
                                 <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-1">Precisión</div>
                                 <div className={cn("text-2xl font-bold", accuracy === 100 ? "text-emerald-600" : "text-amber-600")}>
-                                    {accuracy}%
+                                    {items.length > 0 && countedItems > 0 ? accuracy : 0}%
                                 </div>
                             </div>
                         </div>
@@ -484,13 +514,13 @@ export default function NewAuditPage() {
                         <Button
                             size="lg"
                             className="bg-slate-900 hover:bg-black text-white font-bold px-8 h-12 shadow-lg shadow-slate-900/20 rounded-xl transition-all hover:scale-[1.02] active:scale-95"
-                            disabled={items.length === 0 || isLoading}
+                            disabled={items.length === 0 || countedItems !== items.length || isLoading}
                             onClick={handleConfirm}
                         >
                             {isLoading ? (
                                 <>
                                     <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                                    Guardando...
+                                    Procesando...
                                 </>
                             ) : (
                                 "Finalizar Auditoría"

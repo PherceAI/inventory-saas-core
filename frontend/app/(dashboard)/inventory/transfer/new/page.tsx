@@ -24,6 +24,7 @@ import { useToast } from "@/hooks/use-toast"
 // Services
 import { ProductsService } from "@/services/products.service"
 import { WarehousesService, Warehouse } from "@/services/warehouses.service"
+import { InventoryService } from "@/services/inventory.service"
 
 // --- Types ---
 interface TransferItem {
@@ -79,39 +80,46 @@ export default function NewTransferPage() {
     const handleScan = async (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === 'Enter') {
             e.preventDefault()
-            if (!scanCode.trim()) return
+            const term = scanCode.trim()
+            if (!term) return
 
+            // Show loading state if needed via toast or UI icon
             try {
-                const product = await ProductsService.findByTerm(scanCode)
+                // Determine implicit search strategy? Service handles it.
+                // findByTerm expects "term" but in frontend service implementation creates /products/${term} which maps to backend findByTerm logic
+                const result = await ProductsService.findByTerm(term)
+
+                let product = null
+                if (Array.isArray(result)) {
+                    // Start strict, then fallback
+                    const exact = result.find((p: any) => p.sku === term || p.barcode === term)
+                    product = exact || result[0]
+                } else {
+                    product = result
+                }
 
                 if (product) {
-                    // Normalize stock data from backend (handling different DTO shapes)
-                    const stock = product.stockLevel ?? product.stock ?? 0;
+                    // Logic to extract total stock from "currentStock" which comes from backend aggregations
+                    const stock = product.currentStock ? Number(product.currentStock) : (product.stock || 0);
 
                     setActiveProduct({ ...product, stock })
                     setTransferQty(1)
-                    setScanCode("") // Keep scanning flow fast
+                    setScanCode("")
 
                     setTimeout(() => {
                         qtyRef.current?.focus()
                         qtyRef.current?.select()
                     }, 50)
                 } else {
-                    toast({
-                        variant: "destructive",
-                        title: "No encontrado",
-                        description: "No se encontró ningún producto con ese código."
-                    })
+                    toast({ variant: "destructive", title: "No encontrado", description: "Código no existe en inventario." })
                     setActiveProduct(null)
                 }
             } catch (err) {
                 console.error(err)
-                toast({
-                    variant: "destructive",
-                    title: "Error",
-                    description: "Error al buscar el producto."
-                })
+                toast({ variant: "destructive", title: "No encontrado", description: "Producto no encontrado." })
                 setActiveProduct(null)
+                // Keep focus on scan so they can retry
+                setTimeout(() => scanRef.current?.select(), 50)
             }
         }
     }
@@ -192,17 +200,19 @@ export default function NewTransferPage() {
         setIsLoading(true)
         try {
             // Build payload
+            // Build payload
             const payload = {
-                originId: originWarehouse,
-                destinationId: destWarehouse,
+                originWarehouseId: originWarehouse,
+                destinationWarehouseId: destWarehouse,
                 items: items.map(i => ({
                     productId: i.productId,
                     quantity: i.quantity
-                }))
+                })),
+                notes: "Traslado generado desde frontend"
             }
 
-            // Mock call or real call if endpoint existed
-            // await api.post('/inventory/transfer', payload)
+            // Real call to backend
+            await InventoryService.registerTransfer(payload)
 
             // Simulating success for now as requested by user flow focus
             await new Promise(r => setTimeout(r, 1000))

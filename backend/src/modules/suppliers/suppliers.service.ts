@@ -2,13 +2,17 @@ import {
   Injectable,
   ConflictException,
   InternalServerErrorException,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../common/database/prisma.service.js';
 import { CreateSupplierDto } from './dto/create-supplier.dto.js';
+import { QuerySuppliersDto } from './dto/query-suppliers.dto.js';
 import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class SuppliersService {
+  private readonly logger = new Logger(SuppliersService.name);
+
   constructor(private readonly prisma: PrismaService) { }
 
   async create(tenantId: string, createSupplierDto: CreateSupplierDto) {
@@ -33,18 +37,47 @@ export class SuppliersService {
           );
         }
       }
-      throw new InternalServerErrorException(error);
+      // SECURITY: Log full error but return generic message to client
+      this.logger.error('Error creating supplier', error);
+      throw new InternalServerErrorException('Error al crear proveedor');
     }
   }
 
-  async findAll(tenantId: string, includeInactive = false) {
-    return this.prisma.supplier.findMany({
-      where: {
-        tenantId,
-        ...(!includeInactive && { isActive: true }) // Default: active only
+  async findAll(tenantId: string, query: QuerySuppliersDto = {}) {
+    const { page = 1, limit = 10, search, includeInactive } = query;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.SupplierWhereInput = {
+      tenantId,
+      ...(!includeInactive && { isActive: true }),
+    };
+
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { code: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    const [data, total] = await Promise.all([
+      this.prisma.supplier.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.supplier.count({ where }),
+    ]);
+
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
       },
-      orderBy: { createdAt: 'desc' },
-    });
+    };
   }
 
   private async generateCode(tenantId: string, name: string): Promise<string> {

@@ -5,7 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../common/database/index.js';
-import { CreateProductDto, QueryProductsDto } from './dto/index.js';
+import { CreateProductDto, QueryProductsDto, UpdateProductDto } from './dto/index.js';
 import { Prisma } from '@prisma/client';
 
 export interface PaginatedProducts {
@@ -155,6 +155,11 @@ export class ProductsService {
       include: {
         category: { select: { id: true, name: true } },
         family: { select: { id: true, name: true } },
+        // Include batches to calculate current stock
+        batches: {
+          where: { quantityCurrent: { gt: 0 } },
+          include: { warehouse: { select: { id: true, name: true } } },
+        },
       },
       take: 10, // Limit results for partial matches
     });
@@ -163,12 +168,26 @@ export class ProductsService {
       throw new NotFoundException(`No products found matching "${term}"`);
     }
 
+    // Helper to calculate stock
+    const addStock = (p: any) => {
+      const stock = p.batches?.reduce(
+        (acc, b) => acc.add(b.quantityCurrent),
+        new Prisma.Decimal(0),
+      ) || new Prisma.Decimal(0);
+      return { ...p, currentStock: stock };
+    };
+
     // If exact SKU match, return single product
     const exactMatch = products.find(
       (p) => p.sku.toLowerCase() === term.toLowerCase() || p.barcode === term,
     );
 
-    return exactMatch || products;
+    if (exactMatch) {
+      return addStock(exactMatch);
+    }
+
+    // Return all matches with calculated stock
+    return products.map(addStock);
   }
 
   /**
@@ -253,5 +272,82 @@ export class ProductsService {
       `Product created: ${product.sku} (${product.name}) for tenant ${tenantId}`,
     );
     return product;
+  }
+
+  /**
+   * Update a product
+   */
+  async update(tenantId: string, id: string, dto: UpdateProductDto) {
+    const product = await this.prisma.product.findFirst({
+      where: { id, tenantId },
+    });
+
+    if (!product) {
+      throw new NotFoundException('Product not found');
+    }
+
+    // Check SKU uniqueness if changed
+    if (dto.sku && dto.sku !== product.sku) {
+      const existingSku = await this.prisma.product.findFirst({
+        where: { tenantId, sku: dto.sku },
+      });
+      if (existingSku) {
+        throw new ConflictException(`SKU "${dto.sku}" already exists`);
+      }
+    }
+
+    // Check barcode uniqueness if changed
+    if (dto.barcode && dto.barcode !== product.barcode) {
+      const existingBarcode = await this.prisma.product.findFirst({
+        where: { tenantId, barcode: dto.barcode },
+      });
+      if (existingBarcode) {
+        throw new ConflictException(
+          `Barcode "${dto.barcode}" already exists`,
+        );
+      }
+    }
+
+    // Validate relationships if changed
+    if (dto.categoryId) {
+      const category = await this.prisma.category.findFirst({
+        where: { id: dto.categoryId, tenantId },
+      });
+      if (!category) throw new NotFoundException('Category not found');
+    }
+
+    if (dto.familyId) {
+      const family = await this.prisma.productFamily.findFirst({
+        where: { id: dto.familyId, tenantId },
+      });
+      if (!family) throw new NotFoundException('Product family not found');
+    }
+
+    return this.prisma.product.update({
+      where: { id },
+      data: dto,
+      include: {
+        category: { select: { id: true, name: true } },
+        family: { select: { id: true, name: true } },
+      },
+    });
+  }
+
+  /**
+   * Soft delete a product
+   */
+  async remove(tenantId: string, id: string) {
+    const product = await this.prisma.product.findFirst({
+      where: { id, tenantId },
+    });
+
+    if (!product) {
+      throw new NotFoundException('Product not found');
+    }
+
+    return this.prisma.product.update({
+      where: { id },
+      data: { isActive: false },
+    });
   }
 }

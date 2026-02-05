@@ -14,7 +14,7 @@ const quickStartSteps = [
         icon: Warehouse,
         title: "Configura tu almacén",
         description: "Ya tienes un almacén por defecto. Personalízalo o agrega más.",
-        href: "/dashboard/warehouses",
+        href: "/settings/inventory",
         color: "text-blue-600",
         bgColor: "bg-blue-50",
         completed: true, // First warehouse is auto-created
@@ -23,7 +23,7 @@ const quickStartSteps = [
         icon: Package,
         title: "Agrega tu primer producto",
         description: "Crea productos con SKU, categorías y niveles de stock.",
-        href: "/dashboard/products/new",
+        href: "/inventory/products/new",
         color: "text-emerald-600",
         bgColor: "bg-emerald-50",
         completed: false,
@@ -32,7 +32,7 @@ const quickStartSteps = [
         icon: Users,
         title: "Registra proveedores",
         description: "Agrega a tus proveedores para órdenes de compra.",
-        href: "/dashboard/suppliers",
+        href: "/suppliers",
         color: "text-amber-600",
         bgColor: "bg-amber-50",
         completed: false,
@@ -41,7 +41,7 @@ const quickStartSteps = [
         icon: FileText,
         title: "Crea una orden de compra",
         description: "Genera órdenes y recibe mercancía automáticamente.",
-        href: "/dashboard/purchase-orders/new",
+        href: "/inventory/orders/new",
         color: "text-indigo-600",
         bgColor: "bg-indigo-50",
         completed: false,
@@ -73,13 +73,13 @@ export function EmptyDashboardState({ hasWarehouses }: EmptyStateProps) {
                     </p>
                     <div className="flex flex-wrap gap-3">
                         <Button size="lg" className="gap-2" asChild>
-                            <Link href="/dashboard/products/new">
+                            <Link href="/inventory/products/new">
                                 <Package className="h-4 w-4" />
                                 Agregar primer producto
                             </Link>
                         </Button>
                         <Button size="lg" variant="outline" className="gap-2" asChild>
-                            <Link href="/dashboard/settings">
+                            <Link href="/settings">
                                 Configurar empresa
                             </Link>
                         </Button>

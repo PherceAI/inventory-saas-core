@@ -5,6 +5,7 @@ import {
   Delete,
   Param,
   Body,
+  Patch,
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
@@ -16,6 +17,7 @@ import {
 } from '@nestjs/swagger';
 import { TenantsService, UserTenant } from './tenants.service.js';
 import { InviteUserDto } from './dto/users.dto.js';
+import { UpdateTenantSettingsDto } from './dto/update-settings.dto.js';
 import { CurrentUser } from '../auth/decorators/index.js';
 
 interface JwtUser {
@@ -56,6 +58,22 @@ export class TenantsController {
   async getMyTenants(@CurrentUser() user: JwtUser): Promise<UserTenant[]> {
     return this.tenantsService.getUserTenants(user.userId);
   }
+
+  @Get(':tenantId')
+  @ApiOperation({ summary: 'Get tenant details' })
+  @ApiResponse({ status: 200, description: 'Tenant details' })
+  async getTenant(
+    @CurrentUser() user: JwtUser,
+    @Param('tenantId') tenantId: string,
+  ) {
+    const membership = await this.tenantsService.getTenantForUser(
+      tenantId,
+      user.userId,
+    );
+    if (!membership) throw new ForbiddenException('Access denied');
+    return membership;
+  }
+
   @Get(':tenantId/users')
   @ApiOperation({ summary: 'Get all users in a tenant' })
   @ApiResponse({ status: 200, description: 'List of tenant users' })
@@ -121,5 +139,28 @@ export class TenantsController {
     }
 
     return this.tenantsService.removeUser(tenantId, targetUserId);
+  }
+
+  @Patch(':tenantId/settings')
+  @ApiOperation({ summary: 'Update tenant profile & settings' })
+  @ApiResponse({ status: 200, description: 'Settings updated successfully' })
+  async updateSettings(
+    @CurrentUser() user: JwtUser,
+    @Param('tenantId') tenantId: string,
+    @Body() dto: UpdateTenantSettingsDto,
+  ) {
+    // Auth check (Admin/Owner only)
+    const membership = await this.tenantsService.getTenantForUser(
+      tenantId,
+      user.userId,
+    );
+    if (
+      !membership ||
+      !['OWNER', 'ADMIN'].includes(membership.userRole as string)
+    ) {
+      throw new ForbiddenException('Insufficient permissions');
+    }
+
+    return this.tenantsService.updateSettings(tenantId, dto);
   }
 }

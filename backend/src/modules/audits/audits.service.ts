@@ -20,11 +20,12 @@ export class AuditsService {
     constructor(private readonly prisma: PrismaService) { }
 
     async create(tenantId: string, dto: CreateAuditDto) {
-        const warehouse = await this.prisma.warehouse.findUnique({
-            where: { id: dto.warehouseId },
+        // SECURITY: Using findFirst with tenantId to ensure isolation
+        const warehouse = await this.prisma.warehouse.findFirst({
+            where: { id: dto.warehouseId, tenantId },
         });
 
-        if (!warehouse || warehouse.tenantId !== tenantId) {
+        if (!warehouse) {
             throw new NotFoundException('Bodega no encontrada');
         }
 
@@ -54,7 +55,13 @@ export class AuditsService {
             });
 
             // Create Items with System Stock Snapshot
-            const itemsData: any[] = [];
+            const itemsData: {
+                tenantId: string;
+                auditId: string;
+                productId: string;
+                systemStock: Decimal;
+            }[] = [];
+
             for (const product of products) {
                 // Calculate current stock in this warehouse
                 const stockAgg = await tx.batch.aggregate({
@@ -70,11 +77,10 @@ export class AuditsService {
                 const systemStock = stockAgg._sum.quantityCurrent || new Decimal(0);
 
                 itemsData.push({
+                    tenantId,
                     auditId: audit.id,
                     productId: product.id,
                     systemStock,
-                    createdAt: new Date(),
-                    updatedAt: new Date(),
                 });
             }
 
@@ -102,8 +108,9 @@ export class AuditsService {
     }
 
     async findOne(tenantId: string, id: string) {
-        const audit = await this.prisma.inventoryAudit.findUnique({
-            where: { id },
+        // SECURITY FIX: Filter by tenantId in query to prevent data leakage
+        const audit = await this.prisma.inventoryAudit.findFirst({
+            where: { id, tenantId },
             include: {
                 warehouse: true,
                 items: {
@@ -113,7 +120,7 @@ export class AuditsService {
             },
         });
 
-        if (!audit || audit.tenantId !== tenantId) {
+        if (!audit) {
             throw new NotFoundException('Auditoría no encontrada');
         }
 

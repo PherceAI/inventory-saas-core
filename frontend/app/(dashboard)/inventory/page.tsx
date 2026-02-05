@@ -22,7 +22,7 @@ import { ProductInboundModal } from "@/components/modules/inventory/product-inbo
 import { ProductTransferModal } from "@/components/modules/inventory/product-transfer-modal";
 import { CreateAuditModal } from "@/components/modules/inventory/create-audit-modal";
 import { CreatePurchaseOrderModal } from "@/components/modules/inventory/create-purchase-order-modal";
-import { ProductsService } from "@/services/products.service";
+import { useProducts } from "@/hooks/use-products";
 
 const ActionButton = React.forwardRef(({ icon: Icon, label, desc, sectionColor, ...props }: any, ref: any) => {
     // Mapa de estilos basados en color semántico
@@ -56,53 +56,36 @@ const ActionButton = React.forwardRef(({ icon: Icon, label, desc, sectionColor, 
 ActionButton.displayName = "ActionButton";
 
 export default function InventoryPage() {
-    const [data, setData] = useState<Product[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const { data: rawProducts = [], isLoading, error } = useProducts();
 
-    useEffect(() => {
-        const fetchData = async () => {
-            try {
-                setIsLoading(true);
-                const response = await ProductsService.getAll({ limit: 100 });
-                const products = response.data || response || [];
+    const data = React.useMemo(() => {
+        if (!rawProducts) return [];
+        return rawProducts.map((p) => {
+            // Calculate stock level from batches if available
+            const stockLevel = p.batches?.reduce(
+                (sum: number, batch: any) => sum + Number(batch.quantityCurrent || 0),
+                0
+            ) ?? p.stockLevel ?? 0;
 
-                // Map API response to table format
-                const mapped: Product[] = products.map((p: any) => {
-                    // Calculate stock level from batches if available
-                    const stockLevel = p.batches?.reduce(
-                        (sum: number, batch: any) => sum + Number(batch.quantityCurrent || 0),
-                        0
-                    ) ?? p.stockLevel ?? 0;
+            const minStock = p.stockMin ?? 10;
+            const stockStatus = stockLevel === 0
+                ? 'Out of Stock'
+                : stockLevel < minStock
+                    ? 'Low Stock'
+                    : 'In Stock';
 
-                    const minStock = p.stockMin ?? 10;
-                    const stockStatus = stockLevel === 0
-                        ? 'Out of Stock'
-                        : stockLevel < minStock
-                            ? 'Low Stock'
-                            : 'In Stock';
-
-                    return {
-                        id: p.id,
-                        sku: p.sku || '-',
-                        name: p.name,
-                        stockLevel,
-                        minStock,
-                        price: p.priceDefault || p.costAverage || 0,
-                        status: stockStatus as "In Stock" | "Low Stock" | "Out of Stock",
-                        category: p.category?.name || p.categoryName || '-',
-                    };
-                });
-                setData(mapped);
-            } catch (error) {
-                console.error('Error fetching products:', error);
-                setData([]);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
-        fetchData();
-    }, []);
+            return {
+                id: p.id,
+                sku: p.sku || '-',
+                name: p.name,
+                stockLevel,
+                minStock,
+                price: p.priceDefault || p.costAverage || 0,
+                status: stockStatus as "In Stock" | "Low Stock" | "Out of Stock",
+                category: p.category?.name || p.categoryName || '-',
+            };
+        });
+    }, [rawProducts]);
 
     if (isLoading) {
         return (
@@ -125,6 +108,19 @@ export default function InventoryPage() {
                         </div>
                     </CardContent>
                 </Card>
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="flex h-full items-center justify-center p-8">
+                <div className="text-center">
+                    <p className="text-red-500 mb-2">Error al cargar el inventario</p>
+                    <Button variant="outline" onClick={() => window.location.reload()}>
+                        Reintentar
+                    </Button>
+                </div>
             </div>
         );
     }
