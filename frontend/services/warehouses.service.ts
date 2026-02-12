@@ -18,8 +18,10 @@ export interface CreateWarehouseDto {
 
 export const WarehousesService = {
     getAll: async () => {
-        const response = await api.get<Warehouse[]>('/warehouses');
-        return response.data;
+        const response = await api.get<{ data: Warehouse[] }>('/warehouses', {
+            params: { limit: 100 }
+        });
+        return response.data.data;
     },
 
     create: async (data: CreateWarehouseDto) => {

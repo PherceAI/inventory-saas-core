@@ -31,8 +31,10 @@ export interface CreateSupplierDto {
 
 export const SuppliersService = {
     getAll: async () => {
-        const response = await api.get<Supplier[]>('/suppliers');
-        return response.data;
+        const response = await api.get<{ data: Supplier[] }>('/suppliers', {
+            params: { limit: 100 } // Get all for dropdowns for now
+        });
+        return response.data.data; // Extract array from pagination wrapper
     },
 
     create: async (data: CreateSupplierDto) => {

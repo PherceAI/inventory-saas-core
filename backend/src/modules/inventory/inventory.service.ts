@@ -493,7 +493,9 @@ export class InventoryService {
               unitCost: outMov.unitCost || new Decimal(0),
               totalCost: (outMov.unitCost || new Decimal(0)).mul(outMov.quantity),
               performedById: userId,
-              notes: dto.notes ? `Traslado Entrada: ${dto.notes}` : 'Recepción de traslado',
+              notes: dto.notes
+                ? `Traslado Entrada: ${dto.notes} (Origen: ${sourceBatch.batchNumber})`
+                : `Recepción de traslado (Origen: ${sourceBatch.batchNumber})`,
               referenceType: 'MOVEMENT',
               referenceId: outMov.id, // Link to outbound movement
             },

@@ -16,7 +16,7 @@ import { AccountsPayableModule } from './modules/accounts-payable/index.js';
 import { FamiliesModule } from './modules/families/index.js';
 import { AuditsModule } from './modules/audits/index.js';
 import { DashboardModule } from './modules/dashboard/index.js';
-import { TenantGuard } from './common/guards/index.js';
+import { TenantGuard, RolesGuard } from './common/guards/index.js';
 import { TenantContextInterceptor } from './common/interceptors/index.js';
 
 @Module({
@@ -79,6 +79,12 @@ import { TenantContextInterceptor } from './common/interceptors/index.js';
     {
       provide: APP_GUARD,
       useClass: TenantGuard,
+    },
+    // Global Roles guard - enforces @Roles() decorator
+    // Must run AFTER TenantGuard (depends on request.activeTenant.userRole)
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
     },
     // Global RLS Interceptor - sets PostgreSQL session variable for Row-Level Security
     // Must run AFTER TenantGuard (guards run before interceptors)

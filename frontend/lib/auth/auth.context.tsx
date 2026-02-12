@@ -50,8 +50,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                         setCurrentTenant(tenant);
                     }
                 }
-            } catch (error) {
-                console.error('Failed to restore auth session:', error);
+            } catch (error: any) {
+                // If 401, it just means the session expired, so we don't need to log an error
+                if (error?.response?.status !== 401) {
+                    console.error('Failed to restore auth session:', error);
+                }
                 authService.logout();
             } finally {
                 setIsLoading(false);

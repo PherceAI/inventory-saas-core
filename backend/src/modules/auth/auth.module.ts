@@ -1,22 +1,34 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { JwtStrategy } from './strategies/index.js';
 import { JwtAuthGuard } from './guards/index.js';
 
-// JWT Configuration constants
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
-const JWT_EXPIRES_IN: '24h' = '24h'; // Type literal for @nestjs/jwt v11 compatibility
-
 @Module({
   imports: [
     PassportModule.register({ defaultStrategy: 'jwt' }),
-    JwtModule.register({
-      secret: JWT_SECRET,
-      signOptions: {
-        expiresIn: JWT_EXPIRES_IN,
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => {
+        const secret = configService.get<string>('JWT_SECRET');
+        const nodeEnv = configService.get<string>('NODE_ENV');
+
+        if (!secret && nodeEnv === 'production') {
+          throw new Error(
+            'FATAL: JWT_SECRET must be configured in production. Application cannot start.',
+          );
+        }
+
+        return {
+          secret: secret || 'dev-secret-only-for-local-development',
+          signOptions: {
+            expiresIn: '24h' as const,
+          },
+        };
       },
     }),
   ],
@@ -24,4 +36,5 @@ const JWT_EXPIRES_IN: '24h' = '24h'; // Type literal for @nestjs/jwt v11 compati
   providers: [AuthService, JwtStrategy, JwtAuthGuard],
   exports: [AuthService, JwtAuthGuard, JwtModule],
 })
-export class AuthModule {}
+export class AuthModule { }
+

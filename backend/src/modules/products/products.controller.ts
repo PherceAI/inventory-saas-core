@@ -9,15 +9,16 @@ import {
 import { ProductsService } from './products.service.js';
 import type { PaginatedProducts } from './products.service.js';
 import { CreateProductDto, QueryProductsDto } from './dto/index.js';
-import { ActiveTenant, RequireTenant } from '../../common/decorators/index.js';
+import { ActiveTenant, RequireTenant, Roles } from '../../common/decorators/index.js';
 import type { ActiveTenantData } from '../../common/decorators/index.js';
+import { UserRole } from '@prisma/client';
 
 @ApiTags('Products')
 @ApiBearerAuth()
 @RequireTenant() // Adds x-tenant-id header to Swagger and marks as required
 @Controller('products')
 export class ProductsController {
-  constructor(private readonly productsService: ProductsService) {}
+  constructor(private readonly productsService: ProductsService) { }
 
   @Get()
   @ApiOperation({
@@ -74,6 +75,7 @@ export class ProductsController {
   }
 
   @Post()
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER)
   @ApiOperation({
     summary: 'Create product',
     description:

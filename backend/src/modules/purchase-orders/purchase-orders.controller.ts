@@ -24,7 +24,9 @@ import { TenantGuard } from '../../common/guards/tenant.guard.js';
 import { RequireTenant } from '../../common/decorators/require-tenant.decorator.js';
 import { ActiveTenant } from '../../common/decorators/active-tenant.decorator.js';
 import type { ActiveTenantData } from '../../common/decorators/active-tenant.decorator.js';
+import { Roles } from '../../common/decorators/roles.decorator.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
+import { UserRole } from '@prisma/client';
 
 @ApiTags('Purchase Orders')
 @ApiBearerAuth()
@@ -35,6 +37,7 @@ export class PurchaseOrdersController {
     constructor(private readonly service: PurchaseOrdersService) { }
 
     @Post()
+    @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER)
     @ApiOperation({ summary: 'Crear orden de compra (DRAFT)' })
     @ApiResponse({ status: 201, description: 'Orden creada exitosamente' })
     async create(
@@ -66,6 +69,7 @@ export class PurchaseOrdersController {
     }
 
     @Patch(':id')
+    @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER)
     @ApiOperation({ summary: 'Actualizar orden de compra (solo DRAFT)' })
     @ApiResponse({ status: 200, description: 'Orden actualizada' })
     @ApiResponse({ status: 400, description: 'Solo se pueden modificar órdenes DRAFT' })
@@ -78,6 +82,7 @@ export class PurchaseOrdersController {
     }
 
     @Post(':id/items')
+    @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER)
     @ApiOperation({ summary: 'Agregar ítem a orden de compra' })
     @ApiResponse({ status: 201, description: 'Ítem agregado' })
     @ApiResponse({ status: 400, description: 'Solo se pueden agregar ítems a órdenes DRAFT' })
@@ -90,6 +95,7 @@ export class PurchaseOrdersController {
     }
 
     @Delete(':id/items/:itemId')
+    @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER)
     @ApiOperation({ summary: 'Eliminar ítem de orden de compra' })
     @ApiResponse({ status: 200, description: 'Ítem eliminado' })
     async removeItem(
@@ -101,6 +107,7 @@ export class PurchaseOrdersController {
     }
 
     @Post(':id/send')
+    @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER)
     @ApiOperation({ summary: 'Enviar orden de compra al proveedor (DRAFT → SENT)' })
     @ApiResponse({ status: 200, description: 'Orden enviada' })
     @ApiResponse({ status: 400, description: 'Solo se pueden enviar órdenes DRAFT con ítems' })
@@ -112,6 +119,7 @@ export class PurchaseOrdersController {
     }
 
     @Post(':id/receive')
+    @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER)
     @ApiOperation({
         summary: '🔥 Recibir mercancía - Crea Batches + AccountPayable automáticamente',
         description: `
@@ -134,6 +142,7 @@ export class PurchaseOrdersController {
     }
 
     @Post(':id/cancel')
+    @Roles(UserRole.OWNER, UserRole.ADMIN)
     @ApiOperation({ summary: 'Cancelar orden de compra' })
     @ApiResponse({ status: 200, description: 'Orden cancelada' })
     @ApiResponse({ status: 400, description: 'No se puede cancelar una orden ya recibida' })

@@ -2,7 +2,11 @@
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Package, Users, Warehouse, FileText, ArrowRight, Sparkles } from "lucide-react";
+import {
+    Package, Users, Warehouse, FileText, ArrowRight,
+    Sparkles, PlayCircle, BookOpen, MessageCircle,
+    CheckCircle2, Circle, Trophy
+} from "lucide-react";
 import Link from "next/link";
 
 interface EmptyStateProps {
@@ -13,162 +17,226 @@ const quickStartSteps = [
     {
         icon: Warehouse,
         title: "Configura tu almacén",
-        description: "Ya tienes un almacén por defecto. Personalízalo o agrega más.",
+        description: "Personaliza tus ubicaciones para organizar mejor tu inventario.",
         href: "/settings/inventory",
         color: "text-blue-600",
-        bgColor: "bg-blue-50",
-        completed: true, // First warehouse is auto-created
+        bgColor: "bg-blue-100",
+        borderColor: "border-blue-200",
+        completed: true,
     },
     {
         icon: Package,
         title: "Agrega tu primer producto",
-        description: "Crea productos con SKU, categorías y niveles de stock.",
+        description: "Registra items con SKU, precios y niveles de stock.",
         href: "/inventory/products/new",
         color: "text-emerald-600",
-        bgColor: "bg-emerald-50",
+        bgColor: "bg-emerald-100",
+        borderColor: "border-emerald-200",
         completed: false,
     },
     {
         icon: Users,
         title: "Registra proveedores",
-        description: "Agrega a tus proveedores para órdenes de compra.",
+        description: "Centraliza la información de tus aliados comerciales.",
         href: "/suppliers",
-        color: "text-amber-600",
-        bgColor: "bg-amber-50",
+        color: "text-sky-600",
+        bgColor: "bg-sky-100",
+        borderColor: "border-sky-200",
         completed: false,
     },
     {
         icon: FileText,
         title: "Crea una orden de compra",
-        description: "Genera órdenes y recibe mercancía automáticamente.",
+        description: "Genera documentos profesionales para reabastecimiento.",
         href: "/inventory/orders/new",
-        color: "text-indigo-600",
-        bgColor: "bg-indigo-50",
+        color: "text-amber-600",
+        bgColor: "bg-amber-100",
+        borderColor: "border-amber-200",
         completed: false,
     },
 ];
 
 export function EmptyDashboardState({ hasWarehouses }: EmptyStateProps) {
-    // Adjust first step based on warehouse status
-    const steps = quickStartSteps.map((step, index) => ({
-        ...step,
-        completed: index === 0 ? hasWarehouses : step.completed,
-    }));
+    // Dynamic completion state logic
+    // Refined logic: If hasWarehouses is true, step 1 is done.
+    const steps = quickStartSteps.map((step, index) => {
+        const isStep1 = index === 0;
+        return {
+            ...step,
+            completed: isStep1 ? hasWarehouses : step.completed,
+        };
+    });
+
+    const completedCount = steps.filter(s => s.completed).length;
+    const progress = Math.round((completedCount / steps.length) * 100);
 
     return (
-        <div className="flex flex-col gap-8">
-            {/* Welcome Hero */}
-            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/10 via-emerald-50 to-teal-50 p-8 md:p-12">
-                <div className="relative z-10">
-                    <div className="flex items-center gap-2 text-primary mb-4">
-                        <Sparkles className="h-5 w-5" />
-                        <span className="text-sm font-semibold uppercase tracking-wider">¡Bienvenido!</span>
+        <div className="flex flex-col gap-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+
+            {/* Hero Section - Premium Gradient */}
+            <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-900 via-blue-900 to-slate-900 p-8 md:p-12 shadow-2xl ring-1 ring-white/10">
+                <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-8">
+                    <div className="max-w-2xl">
+                        <div className="inline-flex items-center gap-2 rounded-full bg-blue-500/10 px-3 py-1 text-sm font-medium text-blue-200 ring-1 ring-inset ring-blue-500/20 mb-6">
+                            <Sparkles className="h-4 w-4 text-blue-400" />
+                            <span>Sistema Configurado y Listo</span>
+                        </div>
+                        <h1 className="text-3xl md:text-5xl font-bold text-white mb-6 tracking-tight">
+                            Bienvenido a tu panel de control
+                        </h1>
+                        <p className="text-lg text-blue-100/80 max-w-xl leading-relaxed mb-8">
+                            Has dado el primer paso hacia una gestión eficiente.
+                            Completa la configuración inicial para desbloquear todo el potencial de tu inventario.
+                        </p>
+                        <div className="flex flex-wrap gap-4">
+                            <Button size="lg" className="bg-blue-600 hover:bg-blue-500 text-white border-0 shadow-lg shadow-blue-900/20" asChild>
+                                <Link href="/inventory/products/new">
+                                    Comenzar ahora
+                                </Link>
+                            </Button>
+                            <Button size="lg" variant="outline" className="bg-white/5 border-white/10 text-white hover:bg-white/10 backdrop-blur-sm" asChild>
+                                <Link href="/settings">
+                                    Ajustes de empresa
+                                </Link>
+                            </Button>
+                        </div>
                     </div>
-                    <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-4">
-                        Tu sistema de inventario está listo
-                    </h1>
-                    <p className="text-lg text-slate-600 max-w-2xl mb-6">
-                        Comienza a configurar tu empresa en pocos minutos. Sigue estos pasos
-                        para tener tu inventario funcionando.
-                    </p>
-                    <div className="flex flex-wrap gap-3">
-                        <Button size="lg" className="gap-2" asChild>
-                            <Link href="/inventory/products/new">
-                                <Package className="h-4 w-4" />
-                                Agregar primer producto
-                            </Link>
-                        </Button>
-                        <Button size="lg" variant="outline" className="gap-2" asChild>
-                            <Link href="/settings">
-                                Configurar empresa
-                            </Link>
-                        </Button>
+                    {/* Gamification Badge */}
+                    <div className="hidden md:flex flex-col items-center justify-center bg-white/5 backdrop-blur-md rounded-2xl p-6 border border-white/10 shadow-xl min-w-[200px]">
+                        <div className="relative">
+                            <svg className="w-24 h-24 transform -rotate-90">
+                                <circle
+                                    className="text-white/10"
+                                    strokeWidth="8"
+                                    stroke="currentColor"
+                                    fill="transparent"
+                                    r="40"
+                                    cx="48"
+                                    cy="48"
+                                />
+                                <circle
+                                    className="text-blue-500 transition-all duration-1000 ease-out"
+                                    strokeWidth="8"
+                                    strokeDasharray={251.2}
+                                    strokeDashoffset={251.2 - (251.2 * progress) / 100}
+                                    strokeLinecap="round"
+                                    stroke="currentColor"
+                                    fill="transparent"
+                                    r="40"
+                                    cx="48"
+                                    cy="48"
+                                />
+                            </svg>
+                            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-2xl font-bold text-white">
+                                {progress}%
+                            </div>
+                        </div>
+                        <p className="mt-4 text-sm font-medium text-blue-200">Progreso Inicial</p>
                     </div>
                 </div>
-                {/* Decorative elements */}
-                <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-primary/20 to-transparent rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-                <div className="absolute bottom-0 left-1/2 w-48 h-48 bg-gradient-to-tr from-emerald-200/50 to-transparent rounded-full blur-2xl translate-y-1/2" />
+
+                {/* Decorative Background Elements */}
+                <div className="absolute top-0 right-0 -mt-20 -mr-20 w-80 h-80 bg-blue-500/30 rounded-full blur-3xl" />
+                <div className="absolute bottom-0 left-0 -mb-20 -ml-20 w-80 h-80 bg-indigo-500/30 rounded-full blur-3xl" />
             </div>
 
-            {/* Quick Start Guide */}
+            {/* Tour / Quick Start Section */}
             <div>
-                <h2 className="text-xl font-bold text-slate-900 mb-4">Guía de inicio rápido</h2>
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="flex items-center justify-between mb-6">
+                    <div>
+                        <h2 className="text-2xl font-bold text-slate-900">Tu Ruta de Éxito</h2>
+                        <p className="text-slate-500">Sigue estos pasos recomendados para configurar tu cuenta</p>
+                    </div>
+                    {progress === 100 && (
+                        <div className="flex items-center gap-2 text-emerald-600 bg-emerald-50 px-4 py-2 rounded-full font-medium">
+                            <Trophy className="h-5 w-5" />
+                            <span>¡Todo listo!</span>
+                        </div>
+                    )}
+                </div>
+
+                <div className="grid gap-6 md:grid-cols-2">
                     {steps.map((step, index) => (
-                        <Card
+                        <div
                             key={step.title}
-                            className={`border-none shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 ${step.completed ? 'opacity-60' : ''}`}
+                            className={`group relative rounded-2xl border bg-white p-6 shadow-sm transition-all hover:shadow-md hover:border-slate-300 ${step.completed ? 'border-l-4 border-l-emerald-500' : 'border-l-4 border-l-transparent'
+                                }`}
                         >
-                            <CardContent className="p-6">
-                                <div className="flex items-start gap-4">
-                                    <div className={`rounded-xl p-3 ${step.bgColor} ${step.color}`}>
-                                        <step.icon className="h-5 w-5" />
-                                    </div>
-                                    <div className="flex-1">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <span className="text-xs font-medium text-slate-400">Paso {index + 1}</span>
-                                            {step.completed && (
-                                                <span className="text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
-                                                    ✓ Listo
-                                                </span>
-                                            )}
-                                        </div>
-                                        <h3 className="font-semibold text-slate-900 mb-1">{step.title}</h3>
-                                        <p className="text-sm text-slate-500 mb-3">{step.description}</p>
+                            <div className="flex items-start gap-5">
+                                <div className={`rounded-xl p-4 transition-colors ${step.completed ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-500 group-hover:bg-blue-50 group-hover:text-blue-600'}`}>
+                                    {step.completed ? <CheckCircle2 className="h-6 w-6" /> : <step.icon className="h-6 w-6" />}
+                                </div>
+                                <div className="flex-1">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <h3 className={`font-bold text-lg ${step.completed ? 'text-slate-800' : 'text-slate-900'}`}>
+                                            {step.title}
+                                        </h3>
                                         {!step.completed && (
-                                            <Link
-                                                href={step.href}
-                                                className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
-                                            >
-                                                Comenzar <ArrowRight className="h-3 w-3" />
-                                            </Link>
+                                            <span className="text-xs font-bold text-slate-300 px-2 py-1 bg-slate-50 rounded-md uppercase tracking-wider">
+                                                Paso {index + 1}
+                                            </span>
                                         )}
                                     </div>
+                                    <p className="text-slate-500 mb-4 leading-relaxed">
+                                        {step.description}
+                                    </p>
+                                    {!step.completed && (
+                                        <Button variant="ghost" className="p-0 h-auto font-semibold text-blue-600 hover:text-blue-700 hover:bg-transparent group-hover:translate-x-1 transition-transform" asChild>
+                                            <Link href={step.href} className="flex items-center gap-2">
+                                                Configurar ahora <ArrowRight className="h-4 w-4" />
+                                            </Link>
+                                        </Button>
+                                    )}
                                 </div>
-                            </CardContent>
-                        </Card>
+                            </div>
+                        </div>
                     ))}
                 </div>
             </div>
 
-            {/* Help Section */}
-            <div className="grid gap-4 md:grid-cols-3">
-                <Card className="border-none shadow-sm">
-                    <CardContent className="p-6 text-center">
-                        <div className="mx-auto w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center mb-3">
-                            <span className="text-2xl">📚</span>
-                        </div>
-                        <h3 className="font-semibold text-slate-900 mb-1">Documentación</h3>
-                        <p className="text-sm text-slate-500 mb-3">Aprende a usar todas las funciones.</p>
-                        <Button variant="ghost" size="sm" className="text-primary">
-                            Ver guías
-                        </Button>
-                    </CardContent>
-                </Card>
-                <Card className="border-none shadow-sm">
-                    <CardContent className="p-6 text-center">
-                        <div className="mx-auto w-12 h-12 rounded-full bg-amber-50 flex items-center justify-center mb-3">
-                            <span className="text-2xl">💬</span>
-                        </div>
-                        <h3 className="font-semibold text-slate-900 mb-1">Soporte</h3>
-                        <p className="text-sm text-slate-500 mb-3">¿Necesitas ayuda? Contáctanos.</p>
-                        <Button variant="ghost" size="sm" className="text-primary">
-                            Abrir chat
-                        </Button>
-                    </CardContent>
-                </Card>
-                <Card className="border-none shadow-sm">
-                    <CardContent className="p-6 text-center">
-                        <div className="mx-auto w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center mb-3">
-                            <span className="text-2xl">🎥</span>
-                        </div>
-                        <h3 className="font-semibold text-slate-900 mb-1">Video Tutorial</h3>
-                        <p className="text-sm text-slate-500 mb-3">Mira cómo configurar todo en 5 min.</p>
-                        <Button variant="ghost" size="sm" className="text-primary">
-                            Ver video
-                        </Button>
-                    </CardContent>
-                </Card>
+            {/* Support & Resources Grid */}
+            <div className="grid gap-6 md:grid-cols-3 mt-4">
+                <Link href="/docs" className="block group">
+                    <Card className="border-none shadow-sm hover:shadow-md transition-all cursor-pointer bg-slate-50">
+                        <CardContent className="p-6 flex items-center gap-4">
+                            <div className="h-12 w-12 rounded-full bg-white shadow-sm flex items-center justify-center text-slate-600 group-hover:text-blue-600 group-hover:scale-110 transition-all">
+                                <BookOpen className="h-6 w-6" />
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-slate-900">Documentación</h3>
+                                <p className="text-xs text-slate-500 mt-1">Guías detalladas</p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </Link>
+
+                <Link href="/help" className="block group">
+                    <Card className="border-none shadow-sm hover:shadow-md transition-all cursor-pointer bg-slate-50">
+                        <CardContent className="p-6 flex items-center gap-4">
+                            <div className="h-12 w-12 rounded-full bg-white shadow-sm flex items-center justify-center text-slate-600 group-hover:text-emerald-600 group-hover:scale-110 transition-all">
+                                <MessageCircle className="h-6 w-6" />
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-slate-900">Soporte 24/7</h3>
+                                <p className="text-xs text-slate-500 mt-1">Chat en vivo</p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </Link>
+
+                <Link href="/tutorials" className="block group">
+                    <Card className="border-none shadow-sm hover:shadow-md transition-all cursor-pointer bg-slate-50">
+                        <CardContent className="p-6 flex items-center gap-4">
+                            <div className="h-12 w-12 rounded-full bg-white shadow-sm flex items-center justify-center text-slate-600 group-hover:text-amber-600 group-hover:scale-110 transition-all">
+                                <PlayCircle className="h-6 w-6" />
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-slate-900">Video Tutoriales</h3>
+                                <p className="text-xs text-slate-500 mt-1">Aprende en 5 min</p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </Link>
             </div>
         </div>
     );

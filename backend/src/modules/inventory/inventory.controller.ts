@@ -15,9 +15,10 @@ import {
   CreateOutboundMovementDto,
   QueryMovementsDto,
 } from './dto/index.js';
-import { ActiveTenant, RequireTenant } from '../../common/decorators/index.js';
+import { ActiveTenant, RequireTenant, Roles } from '../../common/decorators/index.js';
 import type { ActiveTenantData } from '../../common/decorators/index.js';
 import { CurrentUser } from '../auth/decorators/index.js';
+import { UserRole } from '@prisma/client';
 
 @ApiTags('Inventory')
 @ApiBearerAuth()
@@ -48,6 +49,7 @@ export class InventoryController {
    * Register stock entry (creates Batch + Movement)
    */
   @Post('inbound')
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER, UserRole.OPERATOR)
   @ApiOperation({
     summary: 'Registrar ingreso de mercancía',
     description:
@@ -100,6 +102,7 @@ export class InventoryController {
    * Register stock exit using FIFO logic
    */
   @Post('outbound')
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER, UserRole.OPERATOR)
   @ApiOperation({
     summary: 'Registrar salida de mercancía (FIFO)',
     description:
@@ -224,6 +227,7 @@ export class InventoryController {
    * Register transfer between warehouses
    */
   @Post('transfer')
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER)
   @ApiOperation({
     summary: 'Registrar traslado entre bodegas',
     description: 'Mueve stock de una bodega a otra (Salida + Entrada atómica).',

@@ -203,27 +203,14 @@ export class AuthService {
       return null;
     }
 
-    // Try bcrypt comparison first (production hashes)
+    // Validate password using bcrypt only — no fallbacks
     let isValidPassword = false;
     try {
       isValidPassword = await bcrypt.compare(password, user.passwordHash);
     } catch {
-      // bcrypt.compare throws if hash is not valid bcrypt format
-      this.logger.debug(
-        `Password hash is not bcrypt format for user: ${email}`,
+      this.logger.warn(
+        `Password hash is not bcrypt format for user: ${email}. Ensure seed data uses bcrypt hashes.`,
       );
-    }
-
-    // DEV MODE FALLBACK: Only when explicitly enabled
-    // Requires ALLOW_DEV_PASSWORDS=true in environment
-    if (!isValidPassword && process.env.ALLOW_DEV_PASSWORDS === 'true') {
-      // Check if hash starts with "hashed_" and contains the password
-      if (user.passwordHash.startsWith(`hashed_${password}_`)) {
-        this.logger.warn(
-          `⚠️  DEV MODE: Plain text password match for ${email}. Update to bcrypt hash!`,
-        );
-        isValidPassword = true;
-      }
     }
 
     if (!isValidPassword) {

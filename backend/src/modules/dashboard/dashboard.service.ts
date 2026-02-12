@@ -126,82 +126,130 @@ export class DashboardService {
     }
 
     /**
-     * Count products where current stock < stockMin
+     * Count products where current stock < stockMin (raw SQL with fallback)
      */
     private async countLowStockProducts(tenantId: string): Promise<number> {
-        // Get products with their batch quantities
-        const products = await this.prisma.product.findMany({
-            where: { tenantId, isActive: true },
-            select: {
-                id: true,
-                stockMin: true,
-                batches: {
-                    where: { isExhausted: false },
-                    select: { quantityCurrent: true },
-                },
-            },
-        });
+        try {
+            const result = await this.prisma.$queryRaw<[{ count: bigint }]>`
+                SELECT COUNT(*)::bigint as count FROM (
+                    SELECT p.id
+                    FROM products p
+                    LEFT JOIN batches b ON b."productId" = p.id
+                        AND b."isExhausted" = false
+                        AND b."tenantId" = ${tenantId}::uuid
+                    WHERE p."tenantId" = ${tenantId}::uuid
+                        AND p."isActive" = true
+                    GROUP BY p.id, p."stockMin"
+                    HAVING COALESCE(SUM(b."quantityCurrent"), 0::decimal) > 0::decimal
+                        AND COALESCE(SUM(b."quantityCurrent"), 0::decimal) < p."stockMin"
+                ) AS low_stock
+            `;
+            return Number(result[0]?.count ?? 0);
+        } catch (error) {
+            this.logger.error(`Error in countLowStockProducts raw query: ${error.message}`, error.stack);
+            // Fallback: Fetch all active products and calculate in memory
+            const products = await this.prisma.product.findMany({
+                where: { tenantId, isActive: true },
+                select: { stockMin: true, id: true },
+            });
+            // We need batches for these products... this is N+1 if not careful, better to fetch batches separately?
+            // Actually, for fallback, just do one big query with include if limits allow, or better:
+            // Fetch all non-exhausted batches and map them.
+            const batches = await this.prisma.batch.findMany({
+                where: { tenantId, isExhausted: false },
+                select: { productId: true, quantityCurrent: true },
+            });
 
-        let lowStockCount = 0;
-        for (const product of products) {
-            const totalStock = product.batches.reduce(
-                (sum, batch) => sum + Number(batch.quantityCurrent),
-                0,
-            );
-            if (totalStock > 0 && totalStock < Number(product.stockMin)) {
-                lowStockCount++;
+            const stockMap = new Map<string, number>();
+            for (const batch of batches) {
+                const current = stockMap.get(batch.productId) || 0;
+                stockMap.set(batch.productId, current + Number(batch.quantityCurrent));
             }
+
+            let count = 0;
+            for (const p of products) {
+                const stock = stockMap.get(p.id) || 0;
+                if (stock > 0 && stock < Number(p.stockMin)) {
+                    count++;
+                }
+            }
+            return count;
         }
-        return lowStockCount;
     }
 
     /**
-     * Count products with zero stock
+     * Count products with zero stock (raw SQL with fallback)
      */
     private async countOutOfStockProducts(tenantId: string): Promise<number> {
-        const products = await this.prisma.product.findMany({
-            where: { tenantId, isActive: true },
-            select: {
-                id: true,
-                batches: {
-                    where: { isExhausted: false },
-                    select: { quantityCurrent: true },
-                },
-            },
-        });
+        try {
+            const result = await this.prisma.$queryRaw<[{ count: bigint }]>`
+                SELECT COUNT(*)::bigint as count FROM (
+                    SELECT p.id
+                    FROM products p
+                    LEFT JOIN batches b ON b."productId" = p.id
+                        AND b."isExhausted" = false
+                        AND b."tenantId" = ${tenantId}::uuid
+                    WHERE p."tenantId" = ${tenantId}::uuid
+                        AND p."isActive" = true
+                    GROUP BY p.id
+                    HAVING COALESCE(SUM(b."quantityCurrent"), 0::decimal) = 0::decimal
+                ) AS out_of_stock
+            `;
+            return Number(result[0]?.count ?? 0);
+        } catch (error) {
+            this.logger.error(`Error in countOutOfStockProducts raw query: ${error.message}`, error.stack);
+            // Fallback
+            const products = await this.prisma.product.findMany({
+                where: { tenantId, isActive: true },
+                select: { id: true },
+            });
 
-        let outOfStockCount = 0;
-        for (const product of products) {
-            const totalStock = product.batches.reduce(
-                (sum, batch) => sum + Number(batch.quantityCurrent),
-                0,
-            );
-            if (totalStock === 0) {
-                outOfStockCount++;
+            const batches = await this.prisma.batch.findMany({
+                where: { tenantId, isExhausted: false },
+                select: { productId: true, quantityCurrent: true },
+            });
+
+            const stockMap = new Map<string, number>();
+            for (const batch of batches) {
+                const current = stockMap.get(batch.productId) || 0;
+                stockMap.set(batch.productId, current + Number(batch.quantityCurrent));
             }
+
+            let count = 0;
+            for (const p of products) {
+                const stock = stockMap.get(p.id) || 0;
+                if (stock === 0) {
+                    count++;
+                }
+            }
+            return count;
         }
-        return outOfStockCount;
     }
 
     /**
-     * Calculate total inventory value from batches
+     * Calculate total inventory value (raw SQL with fallback)
      */
     private async calculateInventoryValue(tenantId: string): Promise<number> {
-        const batches = await this.prisma.batch.findMany({
-            where: { tenantId, isExhausted: false },
-            select: {
-                quantityCurrent: true,
-                unitCost: true,
-            },
-        });
+        try {
+            const result = await this.prisma.$queryRaw<[{ total: number | null }]>`
+                SELECT COALESCE(SUM("quantityCurrent" * "unitCost"), 0::decimal)::float8 as total
+                FROM batches
+                WHERE "tenantId" = ${tenantId}::uuid
+                    AND "isExhausted" = false
+            `;
+            const total = Number(result[0]?.total ?? 0);
+            return Math.round(total * 100) / 100;
+        } catch (error) {
+            this.logger.error(`Error in calculateInventoryValue raw query: ${error.message}`, error.stack);
+            // Fallback
+            const batches = await this.prisma.batch.findMany({
+                where: { tenantId, isExhausted: false },
+                select: { quantityCurrent: true, unitCost: true },
+            });
 
-        const totalValue = batches.reduce((sum, batch) => {
-            const value =
-                Number(batch.quantityCurrent) * Number(batch.unitCost);
-            return sum + value;
-        }, 0);
-
-        return Math.round(totalValue * 100) / 100; // Round to 2 decimal places
+            const total = batches.reduce((sum, b) => sum + (Number(b.quantityCurrent) * Number(b.unitCost)), 0);
+            return Math.round(total * 100) / 100;
+        }
     }
 
     /**

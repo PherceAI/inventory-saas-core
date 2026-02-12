@@ -93,18 +93,43 @@ export class AuditsService {
     }
 
     async findAll(tenantId: string, query: QueryAuditsDto) {
-        return this.prisma.inventoryAudit.findMany({
-            where: {
-                tenantId,
-                warehouseId: query.warehouseId,
-                status: query.status,
+        const page = query.page || 1;
+        const limit = query.limit || 20;
+        const skip = (page - 1) * limit;
+
+        const [data, total] = await Promise.all([
+            this.prisma.inventoryAudit.findMany({
+                where: {
+                    tenantId,
+                    warehouseId: query.warehouseId,
+                    status: query.status,
+                },
+                include: {
+                    warehouse: { select: { name: true } },
+                    _count: { select: { items: true } },
+                },
+                orderBy: { createdAt: 'desc' },
+                skip,
+                take: limit,
+            }),
+            this.prisma.inventoryAudit.count({
+                where: {
+                    tenantId,
+                    warehouseId: query.warehouseId,
+                    status: query.status,
+                },
+            }),
+        ]);
+
+        return {
+            data,
+            meta: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit),
             },
-            include: {
-                warehouse: { select: { name: true } },
-                _count: { select: { items: true } },
-            },
-            orderBy: { createdAt: 'desc' },
-        });
+        };
     }
 
     async findOne(tenantId: string, id: string) {
@@ -296,6 +321,15 @@ export class AuditsService {
                             });
 
                             remainingToConsume = remainingToConsume.minus(quantityToTake);
+                        }
+
+                        // I6: Validate all stock was consumed
+                        if (remainingToConsume.gt(0)) {
+                            this.logger.warn(
+                                `Audit ${audit.code}: Could not fully adjust deficit for product ${item.productId}. ` +
+                                `Remaining unconsumed: ${remainingToConsume.toString()} units. ` +
+                                `Available batch stock was insufficient.`
+                            );
                         }
 
                         // Update item adjusted status

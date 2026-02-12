@@ -22,8 +22,9 @@ import {
   UpdateCategoryDto,
   QueryCategoriesDto,
 } from './dto/index.js';
-import { ActiveTenant, RequireTenant } from '../../common/decorators/index.js';
+import { ActiveTenant, RequireTenant, Roles } from '../../common/decorators/index.js';
 import type { ActiveTenantData } from '../../common/decorators/index.js';
+import { UserRole } from '@prisma/client';
 
 @ApiTags('Categories')
 @ApiBearerAuth()
@@ -33,6 +34,7 @@ export class CategoriesController {
   constructor(private readonly categoriesService: CategoriesService) { }
 
   @Post()
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER)
   @ApiOperation({ summary: 'Create a new category' })
   @ApiResponse({ status: 201, description: 'Category created' })
   @ApiResponse({ status: 404, description: 'Parent category not found' })
@@ -75,6 +77,7 @@ export class CategoriesController {
   }
 
   @Put(':id')
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER)
   @ApiOperation({ summary: 'Update a category' })
   @ApiParam({ name: 'id', description: 'Category UUID' })
   @ApiResponse({ status: 200, description: 'Category updated' })
@@ -90,6 +93,7 @@ export class CategoriesController {
   }
 
   @Delete(':id')
+  @Roles(UserRole.OWNER, UserRole.ADMIN)
   @ApiOperation({ summary: 'Soft delete a category' })
   @ApiParam({ name: 'id', description: 'Category UUID' })
   @ApiResponse({ status: 200, description: 'Category deleted' })

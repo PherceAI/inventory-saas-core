@@ -9,6 +9,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { PrismaService } from '../database/index.js';
 import { IS_PUBLIC_KEY } from '../../modules/auth/decorators/index.js';
+import { REQUIRE_TENANT_KEY } from '../decorators/require-tenant.decorator.js';
 
 export const TENANT_HEADER = 'x-tenant-id';
 
@@ -19,7 +20,7 @@ export class TenantGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly prisma: PrismaService,
-  ) {}
+  ) { }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     // Skip tenant validation for public routes
@@ -36,9 +37,19 @@ export class TenantGuard implements CanActivate {
     const tenantId = request.headers[TENANT_HEADER];
     const user = request.user;
 
-    // If no tenant header, skip (route might not require tenant)
-    // Use @RequireTenant() decorator to enforce
+    // If no tenant header, check if route requires it
     if (!tenantId) {
+      const requireTenant = this.reflector.getAllAndOverride<boolean>(
+        REQUIRE_TENANT_KEY,
+        [context.getHandler(), context.getClass()],
+      );
+
+      if (requireTenant) {
+        throw new BadRequestException(
+          'x-tenant-id header is required for this endpoint',
+        );
+      }
+
       return true;
     }
 

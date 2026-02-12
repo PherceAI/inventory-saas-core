@@ -16,6 +16,8 @@ import { TenantGuard } from '../../common/guards/tenant.guard.js';
 import { RequireTenant } from '../../common/decorators/require-tenant.decorator.js';
 import { ActiveTenant } from '../../common/decorators/active-tenant.decorator.js';
 import type { ActiveTenantData } from '../../common/decorators/active-tenant.decorator.js';
+import { Roles } from '../../common/decorators/roles.decorator.js';
+import { UserRole } from '@prisma/client';
 
 @ApiTags('Accounts Payable')
 @ApiBearerAuth()
@@ -54,6 +56,7 @@ export class AccountsPayableController {
     }
 
     @Post(':id/payments')
+    @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER)
     @ApiOperation({ summary: 'Registrar pago (parcial o total)' })
     @ApiResponse({ status: 201, description: 'Pago registrado exitosamente' })
     @ApiResponse({ status: 400, description: 'Monto excede el saldo pendiente' })
@@ -66,6 +69,7 @@ export class AccountsPayableController {
     }
 
     @Post('update-statuses')
+    @Roles(UserRole.OWNER, UserRole.ADMIN)
     @ApiOperation({ summary: 'Actualizar estados de cuentas por fecha de vencimiento' })
     @ApiResponse({ status: 200, description: 'Estados actualizados' })
     async updateStatuses(@ActiveTenant() tenant: ActiveTenantData) {

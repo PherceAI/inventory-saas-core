@@ -20,9 +20,10 @@ import {
     UpdateAuditItemDto,
     QueryAuditsDto,
 } from './dto/index.js';
-import { ActiveTenant, RequireTenant } from '../../common/decorators/index.js';
+import { ActiveTenant, RequireTenant, Roles } from '../../common/decorators/index.js';
 import type { ActiveTenantData } from '../../common/decorators/index.js';
 import { CurrentUser } from '../auth/decorators/index.js';
+import { UserRole } from '@prisma/client';
 
 @ApiTags('Audits')
 @ApiBearerAuth()
@@ -32,6 +33,7 @@ export class AuditsController {
     constructor(private readonly auditsService: AuditsService) { }
 
     @Post()
+    @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER)
     @ApiOperation({ summary: 'Crear una nueva auditoría (snapshot de stock)' })
     @ApiResponse({ status: 201, description: 'Auditoría creada' })
     async create(
@@ -60,6 +62,7 @@ export class AuditsController {
     }
 
     @Patch(':id/items/:itemId')
+    @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER, UserRole.OPERATOR)
     @ApiOperation({ summary: 'Actualizar conteo de un ítem' })
     async updateItem(
         @ActiveTenant() tenant: ActiveTenantData,
@@ -76,6 +79,7 @@ export class AuditsController {
     }
 
     @Post(':id/close')
+    @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER)
     @ApiOperation({ summary: 'Cerrar auditoría y generar ajustes' })
     @ApiResponse({ status: 200, description: 'Auditoría cerrada y ajustes generados' })
     async close(
