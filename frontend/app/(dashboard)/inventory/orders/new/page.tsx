@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useRef, useEffect } from "react"
+import React, { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -15,16 +15,15 @@ import {
     ArrowLeft,
     Loader2,
     Building2,
-    DollarSign,
     CreditCard
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 
-// Services
+// Services & Hooks
 import { ProductsService } from "@/services/products.service"
-import { PurchaseOrdersService } from "@/services/purchase-orders.service"
-import { SuppliersService } from "@/services/suppliers.service"
+import { useSuppliers } from "@/hooks/use-suppliers"
+import { useCreatePurchaseOrder, useAddPurchaseOrderItem } from "@/hooks/use-purchase-orders"
 
 interface OrderItem {
     id: string
@@ -39,8 +38,13 @@ interface OrderItem {
 export default function NewPurchaseOrderPage() {
     const router = useRouter()
     const { toast } = useToast()
-    const [isLoading, setIsLoading] = useState(false)
-    const [suppliers, setSuppliers] = useState<any[]>([])
+
+    // Data Hooks
+    const { data: suppliers = [] } = useSuppliers()
+    const { mutateAsync: createOrder, isPending: isCreatingOrder } = useCreatePurchaseOrder()
+    const { mutateAsync: addItemToOrder, isPending: isAddingItem } = useAddPurchaseOrderItem()
+
+    const isLoading = isCreatingOrder || isAddingItem
 
     // Header State
     const [supplierId, setSupplierId] = useState("")
@@ -60,11 +64,6 @@ export default function NewPurchaseOrderPage() {
     const qtyRef = useRef<HTMLInputElement>(null)
     const searchRef = useRef<HTMLInputElement>(null)
 
-    // Load Suppliers
-    useEffect(() => {
-        SuppliersService.getAll().then(setSuppliers).catch(console.error)
-    }, [])
-
     // Search Logic
     const handleSearch = async (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === 'Enter') {
@@ -72,6 +71,7 @@ export default function NewPurchaseOrderPage() {
             if (!searchTerm.trim()) return
 
             try {
+                // Kept imperative for specific interaction
                 const product = await ProductsService.findByTerm(searchTerm)
                 if (product) {
                     setActiveProduct(product)
@@ -84,6 +84,7 @@ export default function NewPurchaseOrderPage() {
                 }
             } catch (error) {
                 console.error(error)
+                toast({ variant: "destructive", title: "Error", description: "Error al buscar producto." })
             }
         }
     }
@@ -115,16 +116,23 @@ export default function NewPurchaseOrderPage() {
     const handleConfirm = async () => {
         if (!supplierId || items.length === 0) return
 
-        setIsLoading(true)
         try {
-            const order = await PurchaseOrdersService.create({
+            const order = await createOrder({
                 supplierId,
-                expectedDeliveryDate: deliveryDate ? new Date(deliveryDate) : undefined,
+                expectedDeliveryDate: deliveryDate ? deliveryDate : undefined,
                 paymentTerms
-            } as any)
+            })
 
             await Promise.all(items.map(item =>
-                PurchaseOrdersService.addItem(order.id, item)
+                addItemToOrder({
+                    orderId: order.id,
+                    item: {
+                        productId: item.productId,
+                        quantityOrdered: item.quantity,
+                        unitPrice: item.unitCost,
+                        taxRate: item.taxRate
+                    }
+                })
             ))
 
             toast({ title: "Orden Creada", description: "La orden de compra ha sido enviada." })
@@ -132,8 +140,6 @@ export default function NewPurchaseOrderPage() {
         } catch (error) {
             console.error(error)
             toast({ variant: "destructive", title: "Error", description: "No se pudo crear la orden." })
-        } finally {
-            setIsLoading(false)
         }
     }
 
@@ -173,7 +179,7 @@ export default function NewPurchaseOrderPage() {
                                 </div>
                             </SelectTrigger>
                             <SelectContent>
-                                {suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                                {suppliers.map((s: any) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                             </SelectContent>
                         </Select>
                     </div>

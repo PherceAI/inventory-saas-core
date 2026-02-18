@@ -186,8 +186,8 @@ export function CreatePurchaseOrderModal({ children }: CreatePurchaseOrderModalP
             await Promise.all(items.map(item =>
                 PurchaseOrdersService.addItem(order.id, {
                     productId: item.productId,
-                    quantity: item.quantity,
-                    unitCost: item.unitCost,
+                    quantityOrdered: item.quantity,
+                    unitPrice: item.unitCost,
                     taxRate: item.taxRate
                 })
             ))
