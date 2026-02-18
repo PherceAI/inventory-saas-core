@@ -40,7 +40,7 @@ const formSchema = z.object({
     name: z.string().min(1, "El nombre es requerido"),
     description: z.string().optional(),
     parentId: z.string().optional(),
-    isActive: z.boolean().default(true),
+    isActive: z.boolean(),
 })
 
 interface CategoryDialogProps {

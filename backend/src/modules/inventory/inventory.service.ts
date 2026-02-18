@@ -316,7 +316,7 @@ export class InventoryService {
       });
     } catch (error) {
       this.logger.error(`Transaction failed during inbound registration: ${error.message}`);
-      this.logger.error(`DTO received: ${JSON.stringify(dto)}`);
+      this.logger.error(`DTO keys: ${Object.keys(dto).join(', ')}`);
       this.logger.error(`TenantId: ${tenantId}, UserId: ${userId}`);
       throw error;
     }
@@ -674,8 +674,8 @@ export class InventoryService {
     } = query;
     const skip = (page - 1) * limit;
 
-    const where: any = { tenantId };
-    const andConditions: any[] = [];
+    const where: Prisma.InventoryMovementWhereInput = { tenantId };
+    const andConditions: Prisma.InventoryMovementWhereInput[] = [];
 
     if (type) where.type = type;
     if (productId) where.productId = productId;
